@@ -27,7 +27,7 @@
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
-let peer;
+let peer = null;
 let audioEnabled = false;
 
 // ★音声ON/OFF
@@ -54,32 +54,38 @@ document.getElementById("connectBtn").onclick = () => {
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
 
+        // ★視聴者数表示
         if (data.type === "viewer-count") {
             document.getElementById("viewerCount").innerText =
                 `視聴者数：${data.count}人`;
         }
 
-        if (data.type === "auth-ok") {
-            peer = new RTCPeerConnection();
-
-            peer.ontrack = (e) => {
-                document.getElementById("remoteVideo").srcObject = e.streams[0];
-            };
-
-            peer.onicecandidate = (e) => {
-                if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
-            };
-        }
-
+        // ★offer が来た時点で peer を作る（重要）
         if (data.type === "offer") {
+
+            if (!peer) {
+                peer = new RTCPeerConnection();
+
+                peer.ontrack = (e) => {
+                    document.getElementById("remoteVideo").srcObject = e.streams[0];
+                };
+
+                peer.onicecandidate = (e) => {
+                    if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+                };
+            }
+
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
             ws.send(JSON.stringify({ type: "answer", answer }));
         }
 
+        // ★candidate
         if (data.type === "candidate") {
-            await peer.addIceCandidate(data.candidate);
+            if (peer) {
+                await peer.addIceCandidate(data.candidate);
+            }
         }
     };
 };
