@@ -24,11 +24,14 @@
 <video id="localVideo" autoplay playsinline muted></video>
 
 <script>
-const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ←あなたのURLに変更
+// ★ここをあなたの server の URL にする
+const signalingUrl = "wss://pet-camera-server-1.onrender.com";
+
 let localStream;
 let peer;
 let audioEnabled = false;
 
+// ★音声ON/OFFボタン
 document.getElementById("audioToggle").onclick = () => {
     audioEnabled = !audioEnabled;
     document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
@@ -37,11 +40,13 @@ document.getElementById("audioToggle").onclick = () => {
     }
 };
 
+// ★配信開始ボタン
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
+    // 外カメラ＋音声
     localStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" } }, // 外カメラ
+        video: { facingMode: { exact: "environment" } },
         audio: true
     });
 
@@ -50,6 +55,7 @@ document.getElementById("startBtn").onclick = async () => {
     const ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
+        // ★ここでパスワードを送る
         ws.send(JSON.stringify({ type: "auth", password }));
     };
 
@@ -62,7 +68,9 @@ document.getElementById("startBtn").onclick = async () => {
             localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
             peer.onicecandidate = (e) => {
-                if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+                if (e.candidate) {
+                    ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+                }
             };
 
             const offer = await peer.createOffer();
