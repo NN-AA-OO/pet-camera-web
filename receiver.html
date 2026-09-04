@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Pet Camera Receiver (iPhone)</title>
+  <style>
+    body { background: #111; color: #eee; text-align: center; font-family: sans-serif; }
+    video { width: 90vw; max-width: 800px; background: #000; }
+    input, button { margin-top: 10px; padding: 10px; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>Pet Camera Receiver (iPhone)</h1>
+
+  <input id="pw" type="password" placeholder="パスワードを入力"><br>
+  <button id="connectBtn">接続</button><br>
+
+  <video id="remoteVideo" autoplay playsinline></video>
+
+  <script>
+    const signalingUrl = "wss://pet-camera-server.onrender.com";
+    let signalingSocket;
+    let peer;
+
+    const pw = document.getElementById("pw");
+    const connectBtn = document.getElementById("connectBtn");
+    const remoteVideo = document.getElementById("remoteVideo");
+
+    function connect() {
+      peer = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+
+      peer.ontrack = (event) => {
+        remoteVideo.srcObject = event.streams[0];
+      };
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          sendSignal({ type: "candidate", candidate: event.candidate });
+        }
+      };
+
+      connectSignaling();
+    }
+
+    function connectSignaling() {
+      signalingSocket = new WebSocket(signalingUrl);
+
+      signalingSocket.onopen = () => {
+        signalingSocket.send(JSON.stringify({ password: pw.value }));
+      };
+
+      signalingSocket.onmessage = async (event) => {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "auth") {
+          if (data.status === "fail") {
+            alert("パスワードが違います");
+            signalingSocket.close();
+          }
+          return;
+        }
+
+        if (data.type === "offer") {
+          await peer.setRemoteDescription(new RTCSessionDescription({
+            type: "offer",
+            sdp: data.sdp
+          }));
+
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+
+          sendSignal({ type: "answer", sdp: answer.sdp });
+        } else if (data.type === "candidate") {
+          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      };
+    }
+
+    function sendSignal(payload) {
+      signalingSocket.send(JSON.stringify(payload));
+    }
+
+    connectBtn.onclick = () => connect();
+  </script>
+</body>
+</html>
