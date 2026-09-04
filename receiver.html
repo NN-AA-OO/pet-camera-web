@@ -21,13 +21,16 @@
 <button id="connectBtn">接続</button>
 <button id="audioToggle">音声OFF</button>
 
+<p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
+
 <video id="remoteVideo" autoplay playsinline></video>
 
 <script>
-const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ←あなたのURLに変更
+const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
 let peer;
 let audioEnabled = false;
 
+// ★音声ON/OFF
 document.getElementById("audioToggle").onclick = () => {
     audioEnabled = !audioEnabled;
     document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
@@ -38,6 +41,7 @@ document.getElementById("audioToggle").onclick = () => {
     }
 };
 
+// ★接続
 document.getElementById("connectBtn").onclick = () => {
     const password = document.getElementById("password").value;
 
@@ -49,6 +53,11 @@ document.getElementById("connectBtn").onclick = () => {
 
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
+
+        if (data.type === "viewer-count") {
+            document.getElementById("viewerCount").innerText =
+                `視聴者数：${data.count}人`;
+        }
 
         if (data.type === "auth-ok") {
             peer = new RTCPeerConnection();
