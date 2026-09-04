@@ -1,88 +1,80 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>Pet Camera Receiver (iPhone)</title>
-  <style>
-    body { background: #111; color: #eee; text-align: center; font-family: sans-serif; }
-    video { width: 90vw; max-width: 800px; background: #000; }
-    input, button { margin-top: 10px; padding: 10px; font-size: 16px; }
-  </style>
+<meta charset="UTF-8">
+<title>ペットカメラ（受信側）</title>
+<style>
+  body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
+  video { width: 90%; margin-top: 20px; background: #000; }
+  button { padding: 10px 20px; margin: 10px; font-size: 18px; }
+  input { padding: 10px; font-size: 18px; }
+</style>
 </head>
 <body>
-  <h1>Pet Camera Receiver (iPhone)</h1>
 
-  <input id="pw" type="password" placeholder="パスワードを入力"><br>
-  <button id="connectBtn">接続</button><br>
+<h2>ペットカメラ（受信側）</h2>
 
-  <video id="remoteVideo" autoplay playsinline></video>
+<p>パスワードを入力してください</p>
+<input id="password" type="password">
 
-  <script>
-    const signalingUrl = "wss://pet-camera-server-1.onrender.com";
-    let signalingSocket;
-    let peer;
+<br>
+<button id="connectBtn">接続</button>
+<button id="audioToggle">音声OFF</button>
 
-    const pw = document.getElementById("pw");
-    const connectBtn = document.getElementById("connectBtn");
-    const remoteVideo = document.getElementById("remoteVideo");
+<video id="remoteVideo" autoplay playsinline></video>
 
-    function connect() {
-      peer = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-      });
+<script>
+const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ←あなたのURLに変更
+let peer;
+let audioEnabled = false;
 
-      peer.ontrack = (event) => {
-        remoteVideo.srcObject = event.streams[0];
-      };
-
-      peer.onicecandidate = (event) => {
-        if (event.candidate) {
-          sendSignal({ type: "candidate", candidate: event.candidate });
-        }
-      };
-
-      connectSignaling();
+document.getElementById("audioToggle").onclick = () => {
+    audioEnabled = !audioEnabled;
+    document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
+    if (peer) {
+        peer.getReceivers().forEach(r => {
+            if (r.track.kind === "audio") r.track.enabled = audioEnabled;
+        });
     }
+};
 
-    function connectSignaling() {
-      signalingSocket = new WebSocket(signalingUrl);
+document.getElementById("connectBtn").onclick = () => {
+    const password = document.getElementById("password").value;
 
-      signalingSocket.onopen = () => {
-        signalingSocket.send(JSON.stringify({ password: pw.value }));
-      };
+    const ws = new WebSocket(signalingUrl);
 
-      signalingSocket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
+    ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "auth", password }));
+    };
 
-        if (data.type === "auth") {
-          if (data.status === "fail") {
-            alert("パスワードが違います");
-            signalingSocket.close();
-          }
-          return;
+    ws.onmessage = async (msg) => {
+        const data = JSON.parse(msg.data);
+
+        if (data.type === "auth-ok") {
+            peer = new RTCPeerConnection();
+
+            peer.ontrack = (e) => {
+                document.getElementById("remoteVideo").srcObject = e.streams[0];
+            };
+
+            peer.onicecandidate = (e) => {
+                if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+            };
         }
 
         if (data.type === "offer") {
-          await peer.setRemoteDescription(new RTCSessionDescription({
-            type: "offer",
-            sdp: data.sdp
-          }));
-
-          const answer = await peer.createAnswer();
-          await peer.setLocalDescription(answer);
-
-          sendSignal({ type: "answer", sdp: answer.sdp });
-        } else if (data.type === "candidate") {
-          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+            await peer.setRemoteDescription(data.offer);
+            const answer = await peer.createAnswer();
+            await peer.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: "answer", answer }));
         }
-      };
-    }
 
-    function sendSignal(payload) {
-      signalingSocket.send(JSON.stringify(payload));
-    }
+        if (data.type === "candidate") {
+            await peer.addIceCandidate(data.candidate);
+        }
+    };
+};
+</script>
 
-    connectBtn.onclick = () => connect();
-  </script>
 </body>
 </html>
