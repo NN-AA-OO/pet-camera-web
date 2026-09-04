@@ -29,7 +29,8 @@
 
 <br>
 <button id="connectBtn">接続</button>
-<button id="audioToggle">音声OFF</button>
+<button id="audioToggleIn">こちらのマイクOFF</button>
+<button id="audioToggleOut">相手の音声OFF</button>
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
@@ -37,25 +38,39 @@
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
+let ws = null;
 let peer = null;
-let audioEnabled = false;
+let receiverId = null;
 
-// ★音声ON/OFF
-document.getElementById("audioToggle").onclick = () => {
-    audioEnabled = !audioEnabled;
-    document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
-    if (peer) {
-        peer.getReceivers().forEach(r => {
-            if (r.track.kind === "audio") r.track.enabled = audioEnabled;
-        });
+let localAudioStream = null;      // iPhone側マイク
+let micEnabled = true;            // 自分のマイクON/OFF
+let remoteAudioEnabled = true;    // 相手の音声ON/OFF
+
+// ★自分のマイクON/OFF（iPhone → iPad）
+document.getElementById("audioToggleIn").onclick = () => {
+    micEnabled = !micEnabled;
+    document.getElementById("audioToggleIn").innerText =
+        micEnabled ? "こちらのマイクOFF" : "こちらのマイクON";
+    if (localAudioStream) {
+        localAudioStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
     }
 };
 
+// ★相手の音声ON/OFF（iPad → iPhone）
+document.getElementById("audioToggleOut").onclick = () => {
+    remoteAudioEnabled = !remoteAudioEnabled;
+    document.getElementById("audioToggleOut").innerText =
+        remoteAudioEnabled ? "相手の音声OFF" : "相手の音声ON";
+
+    const video = document.getElementById("remoteVideo");
+    video.muted = !remoteAudioEnabled;
+};
+
 // ★接続
-document.getElementById("connectBtn").onclick = () => {
+document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    const ws = new WebSocket(signalingUrl);
+    ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type: "auth", password }));
@@ -70,35 +85,102 @@ document.getElementById("connectBtn").onclick = () => {
                 `視聴者数：${data.count}人`;
         }
 
-        // ★offer が来た時点で peer を作る（重要）
-        if (data.type === "offer") {
+        // ★認証成功
+        if (data.type === "auth-ok") {
+            console.log("receiver 認証OK");
+        }
 
+        // ★自分の receiverId を受信
+        if (data.type === "receiver-id") {
+            receiverId = data.receiverId;
+            console.log("自分の receiverId=", receiverId);
+        }
+
+        // ★offer が来た時点で peer を作る
+        if (data.type === "offer") {
             if (!peer) {
                 peer = new RTCPeerConnection();
 
+                // ★映像＋音声を受信
                 peer.ontrack = (e) => {
-                    document.getElementById("remoteVideo").srcObject = e.streams[0];
+                    const stream = e.streams[0];
+                    document.getElementById("remoteVideo").srcObject = stream;
+                    // 相手の音声ON/OFFは video.muted で制御
+                    document.getElementById("remoteVideo").muted = !remoteAudioEnabled;
                 };
 
+                // ★ICE candidate を送信
                 peer.onicecandidate = (e) => {
-                    if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+                    if (e.candidate && ws && receiverId != null) {
+                        ws.send(JSON.stringify({
+                            type: "candidate",
+                            candidate: e.candidate,
+                            receiverId
+                        }));
+                    }
                 };
+
+                // ★自分のマイクを取得して送信（双方向音声）
+                localAudioStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                    video: false
+                });
+                localAudioStream.getAudioTracks().forEach(t => {
+                    t.enabled = micEnabled;
+                    peer.addTrack(t, localAudioStream);
+                });
             }
 
+            // ★offer を適用
             await peer.setRemoteDescription(data.offer);
+
+            // ★answer 作成
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
-            ws.send(JSON.stringify({ type: "answer", answer }));
+
+            // ★ICE 完了を待ってから送る
+            await waitForIceComplete(peer);
+
+            ws.send(JSON.stringify({
+                type: "answer",
+                answer: peer.localDescription,
+                receiverId
+            }));
         }
 
         // ★candidate
         if (data.type === "candidate") {
             if (peer) {
-                await peer.addIceCandidate(data.candidate);
+                try {
+                    await peer.addIceCandidate(data.candidate);
+                } catch (e) {
+                    console.error("addIceCandidate error", e);
+                }
             }
+        }
+
+        // ★sender が切断された
+        if (data.type === "sender-disconnected") {
+            console.log("送信側が切断されました");
+            // 必要なら UI に「配信終了」と表示するなど
         }
     };
 };
+
+// ★ICE gathering 完了を待つ
+function waitForIceComplete(peer) {
+    return new Promise(resolve => {
+        if (peer.iceGatheringState === "complete") {
+            resolve();
+        } else {
+            peer.onicegatheringstatechange = () => {
+                if (peer.iceGatheringState === "complete") {
+                    resolve();
+                }
+            };
+        }
+    });
+}
 </script>
 
 </body>
