@@ -1,98 +1,86 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>Pet Camera Sender (iPad)</title>
-  <style>
-    body { background: #111; color: #eee; text-align: center; font-family: sans-serif; }
-    video { width: 90vw; max-width: 800px; background: #000; }
-    input, button { margin-top: 10px; padding: 10px; font-size: 16px; }
-  </style>
+<meta charset="UTF-8">
+<title>ペットカメラ（送信側）</title>
+<style>
+  body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
+  video { width: 90%; margin-top: 20px; background: #000; }
+  button { padding: 10px 20px; margin: 10px; font-size: 18px; }
+  input { padding: 10px; font-size: 18px; }
+</style>
 </head>
 <body>
-  <h1>Pet Camera Sender (iPad)</h1>
 
-  <input id="pw" type="password" placeholder="パスワードを入力"><br>
-  <button id="startBtn">配信開始</button><br>
+<h2>ペットカメラ（送信側）</h2>
 
-  <video id="localVideo" autoplay playsinline></video>
+<p>パスワードを入力してください</p>
+<input id="password" type="password">
 
-  <script>
-    const signalingUrl = "wss://pet-camera-server-1.onrender.com";
-    let signalingSocket;
-    let peer;
+<br>
+<button id="startBtn">配信開始</button>
+<button id="audioToggle">音声OFF</button>
 
-    const pw = document.getElementById("pw");
-    const startBtn = document.getElementById("startBtn");
-    const localVideo = document.getElementById("localVideo");
+<video id="localVideo" autoplay playsinline muted></video>
 
-    async function start() {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-          frameRate: { ideal: 30 }
-        },
-        audio: false
-      });
+<script>
+const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ←あなたのURLに変更
+let localStream;
+let peer;
+let audioEnabled = false;
 
-      localVideo.srcObject = stream;
-
-      peer = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-      });
-
-      stream.getTracks().forEach(track => peer.addTrack(track, stream));
-
-      peer.onicecandidate = (event) => {
-        if (event.candidate) {
-          sendSignal({ type: "candidate", candidate: event.candidate });
-        }
-      };
-
-      peer.onnegotiationneeded = async () => {
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-        sendSignal({ type: "offer", sdp: offer.sdp });
-      };
-
-      connectSignaling();
+document.getElementById("audioToggle").onclick = () => {
+    audioEnabled = !audioEnabled;
+    document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
+    if (localStream) {
+        localStream.getAudioTracks().forEach(t => t.enabled = audioEnabled);
     }
+};
 
-    function connectSignaling() {
-      signalingSocket = new WebSocket(signalingUrl);
+document.getElementById("startBtn").onclick = async () => {
+    const password = document.getElementById("password").value;
 
-      signalingSocket.onopen = () => {
-        signalingSocket.send(JSON.stringify({ password: pw.value }));
-      };
+    localStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: "environment" } }, // 外カメラ
+        audio: true
+    });
 
-      signalingSocket.onmessage = async (event) => {
-        const data = JSON.parse(event.data);
+    document.getElementById("localVideo").srcObject = localStream;
 
-        if (data.type === "auth") {
-          if (data.status === "fail") {
-            alert("パスワードが違います");
-            signalingSocket.close();
-          }
-          return;
+    const ws = new WebSocket(signalingUrl);
+
+    ws.onopen = () => {
+        ws.send(JSON.stringify({ type: "auth", password }));
+    };
+
+    ws.onmessage = async (msg) => {
+        const data = JSON.parse(msg.data);
+
+        if (data.type === "auth-ok") {
+            peer = new RTCPeerConnection();
+
+            localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+
+            peer.onicecandidate = (e) => {
+                if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
+            };
+
+            const offer = await peer.createOffer();
+            await peer.setLocalDescription(offer);
+
+            ws.send(JSON.stringify({ type: "offer", offer }));
         }
 
         if (data.type === "answer") {
-          await peer.setRemoteDescription(new RTCSessionDescription({
-            type: "answer",
-            sdp: data.sdp
-          }));
-        } else if (data.type === "candidate") {
-          await peer.addIceCandidate(new RTCIceCandidate(data.candidate));
+            await peer.setRemoteDescription(data.answer);
         }
-      };
-    }
 
-    function sendSignal(payload) {
-      signalingSocket.send(JSON.stringify(payload));
-    }
+        if (data.type === "candidate") {
+            await peer.addIceCandidate(data.candidate);
+        }
+    };
+};
+</script>
 
-    startBtn.onclick = () => start();
-  </script>
 </body>
 </html>
