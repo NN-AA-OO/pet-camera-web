@@ -19,24 +19,29 @@
 
 <br>
 <button id="startBtn">配信開始</button>
-<button id="audioToggle">音声OFF</button>
+<button id="audioToggleOut">こちらの音声OFF</button>
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
 <video id="localVideo" autoplay playsinline muted></video>
 
+<!-- 受信側からの音声を再生するための隠しaudio -->
+<audio id="remoteAudio" autoplay></audio>
+
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
-let localStream;
-let peer;
-let audioEnabled = false;
+let localStream;                 // iPadのカメラ＋マイク
+let ws;                          // WebSocket
+let peers = {};                  // receiverId ごとの RTCPeerConnection
+let audioOutEnabled = true;      // こちらの音声（送信）ON/OFF
 
-// ★音声ON/OFF
-document.getElementById("audioToggle").onclick = () => {
-    audioEnabled = !audioEnabled;
-    document.getElementById("audioToggle").innerText = audioEnabled ? "音声ON" : "音声OFF";
+// ★こちらの音声ON/OFF（iPad → iPhone）
+document.getElementById("audioToggleOut").onclick = () => {
+    audioOutEnabled = !audioOutEnabled;
+    document.getElementById("audioToggleOut").innerText =
+        audioOutEnabled ? "こちらの音声OFF" : "こちらの音声ON";
     if (localStream) {
-        localStream.getAudioTracks().forEach(t => t.enabled = audioEnabled);
+        localStream.getAudioTracks().forEach(t => t.enabled = audioOutEnabled);
     }
 };
 
@@ -44,6 +49,7 @@ document.getElementById("audioToggle").onclick = () => {
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
+    // ★カメラ＋マイク取得（背面カメラ）
     localStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { exact: "environment" } },
         audio: true
@@ -51,7 +57,7 @@ document.getElementById("startBtn").onclick = async () => {
 
     document.getElementById("localVideo").srcObject = localStream;
 
-    const ws = new WebSocket(signalingUrl);
+    ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type: "auth", password }));
@@ -66,30 +72,105 @@ document.getElementById("startBtn").onclick = async () => {
                 `視聴者数：${data.count}人`;
         }
 
+        // ★認証成功
         if (data.type === "auth-ok") {
-            peer = new RTCPeerConnection();
+            console.log("sender 認証OK");
+        }
 
-            localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+        // ★新しい受信者が来た
+        if (data.type === "receiver-joined") {
+            const receiverId = data.receiverId;
+            console.log("新規受信者ID=", receiverId);
 
-            peer.onicecandidate = (e) => {
-                if (e.candidate) ws.send(JSON.stringify({ type: "candidate", candidate: e.candidate }));
-            };
+            // ★この受信者用の PeerConnection を作成
+            const peer = createPeerForReceiver(receiverId);
+            peers[receiverId] = peer;
 
+            // ★offer 作成（ICE 完了まで待つ）
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
 
-            ws.send(JSON.stringify({ type: "offer", offer }));
+            await waitForIceComplete(peer);
+
+            ws.send(JSON.stringify({
+                type: "offer",
+                offer: peer.localDescription,
+                receiverId
+            }));
         }
 
+        // ★answer を受信（特定 receiverId 用）
         if (data.type === "answer") {
-            await peer.setRemoteDescription(data.answer);
+            const receiverId = data.receiverId;
+            const peer = peers[receiverId];
+            if (peer) {
+                await peer.setRemoteDescription(data.answer);
+                console.log("answer を適用 receiverId=", receiverId);
+            }
         }
 
+        // ★candidate を受信
         if (data.type === "candidate") {
-            await peer.addIceCandidate(data.candidate);
+            const receiverId = data.receiverId;
+            const peer = peers[receiverId];
+            if (peer) {
+                try {
+                    await peer.addIceCandidate(data.candidate);
+                } catch (e) {
+                    console.error("addIceCandidate error", e);
+                }
+            }
+        }
+
+        // ★sender が切断された通知（今回はログだけ）
+        if (data.type === "sender-disconnected") {
+            console.log("sender-disconnected 受信（本側では特に処理なし）");
         }
     };
 };
+
+// ★receiver ごとに PeerConnection を作る
+function createPeerForReceiver(receiverId) {
+    const peer = new RTCPeerConnection();
+
+    // ★こちらの映像＋音声を送る
+    localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+
+    // ★受信側からの音声を受け取る（双方向音声）
+    peer.ontrack = (e) => {
+        // audio だけ来る想定
+        const remoteStream = e.streams[0];
+        document.getElementById("remoteAudio").srcObject = remoteStream;
+    };
+
+    // ★ICE candidate を送信
+    peer.onicecandidate = (e) => {
+        if (e.candidate && ws) {
+            ws.send(JSON.stringify({
+                type: "candidate",
+                candidate: e.candidate,
+                receiverId
+            }));
+        }
+    };
+
+    return peer;
+}
+
+// ★ICE gathering 完了を待つ
+function waitForIceComplete(peer) {
+    return new Promise(resolve => {
+        if (peer.iceGatheringState === "complete") {
+            resolve();
+        } else {
+            peer.onicegatheringstatechange = () => {
+                if (peer.iceGatheringState === "complete") {
+                    resolve();
+                }
+            };
+        }
+    });
+}
 </script>
 
 </body>
