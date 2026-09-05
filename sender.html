@@ -102,6 +102,11 @@ document.getElementById("startBtn").onclick = async () => {
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
 
+            // 古い peer が残っていたら安全に削除
+            if (peers[receiverId]) {
+                try { peers[receiverId].close(); } catch(e){}
+            }
+
             const peer = createPeer(receiverId);
             peers[receiverId] = peer;
 
@@ -146,11 +151,15 @@ document.getElementById("startBtn").onclick = async () => {
 
 // ★配信終了
 document.getElementById("stopBtn").onclick = () => {
+
     // WebSocket を閉じる
     if (ws) ws.close();
+    ws = null;
 
     // PeerConnection を閉じる
-    Object.values(peers).forEach(peer => peer.close());
+    Object.values(peers).forEach(peer => {
+        try { peer.close(); } catch(e){}
+    });
     peers = {};
 
     // カメラ停止
@@ -160,6 +169,9 @@ document.getElementById("stopBtn").onclick = () => {
 
     // 黒画面を消す
     document.getElementById("blackCover").style.display = "none";
+
+    // ★視聴者数をリセット（重要）
+    document.getElementById("viewerText").innerText = "0人視聴中";
 
     // UI を元に戻す
     document.getElementById("startBtn").style.display = "inline-block";
