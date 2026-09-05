@@ -87,15 +87,24 @@ document.getElementById("connectBtn").onclick = async () => {
             if (!peer) {
                 peer = new RTCPeerConnection();
 
-                // ★トラックごとに処理（Safari対応）
+                // ★Safari完全対応 ontrack（映像が必ず表示される）
                 peer.ontrack = (e) => {
                     if (e.track.kind === "video") {
-                        const vs = new MediaStream([e.track]);
-                        document.getElementById("remoteVideo").srcObject = vs;
+                        let vs = document.getElementById("remoteVideo").srcObject;
+                        if (!vs) {
+                            vs = new MediaStream();
+                            document.getElementById("remoteVideo").srcObject = vs;
+                        }
+                        vs.addTrack(e.track);
                     }
+
                     if (e.track.kind === "audio") {
-                        const as = new MediaStream([e.track]);
-                        document.getElementById("remoteAudio").srcObject = as;
+                        let as = document.getElementById("remoteAudio").srcObject;
+                        if (!as) {
+                            as = new MediaStream();
+                            document.getElementById("remoteAudio").srcObject = as;
+                        }
+                        as.addTrack(e.track);
                     }
                 };
 
