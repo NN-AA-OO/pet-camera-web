@@ -23,7 +23,7 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
-<video id="localVideo" autoplay playsinline muted></video>
+<video id="localVideo" autoplay playsinline muted style="display:none;"></video>
 
 <!-- 受信側からの音声を再生するための隠しaudio -->
 <audio id="remoteAudio" autoplay></audio>
@@ -57,7 +57,11 @@ document.getElementById("startBtn").onclick = async () => {
             height: { ideal: 1080 },
             frameRate: { ideal: 30, max: 30 }
         },
-        audio: true
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        }
     });
 
 
@@ -147,6 +151,15 @@ function createPeerForReceiver(receiverId) {
         senderVideo.setParameters({
             encodings: [{
                 maxBitrate: 2_000_000   // 2Mbps（高画質）
+            }]
+        });
+    }
+      // ★音声ビットレート設定＋ノイズ抑制
+    const senderAudio = peer.getSenders().find(s => s.track.kind === "audio");
+    if (senderAudio) {
+        senderAudio.setParameters({
+            encodings: [{
+                maxBitrate: 32_000   // 32kbps（人の声に十分）
             }]
         });
     }
