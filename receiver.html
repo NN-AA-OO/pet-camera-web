@@ -103,6 +103,7 @@ document.getElementById("connectBtn").onclick = async () => {
                 // ★映像＋音声を受信
                 peer.ontrack = (e) => {
                     const stream = e.streams[0];
+                    console.log("受信したストリーム:", stream);
                     document.getElementById("remoteVideo").srcObject = stream;
                     document.getElementById("remoteAudio").srcObject = stream;
                 };
