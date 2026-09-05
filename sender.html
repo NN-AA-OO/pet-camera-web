@@ -185,7 +185,7 @@ function createPeer(receiverId) {
     // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★受信者の音声を受け取るための transceiver（重要）
+    // ★受信者の音声を受け取るための transceiver（必須）
     peer.addTransceiver("audio", { direction: "recvonly" });
 
     peer.ontrack = (e) => {
