@@ -5,8 +5,17 @@
 <title>ペットカメラ（送信側）</title>
 <style>
   body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
-  button { padding:10px 20px; margin:10px; font-size:18px; }
-  input { padding:10px; font-size:18px; }
+
+  /* 統一デザインのボタン */
+  .btn {
+    padding:12px 20px;
+    margin:10px;
+    font-size:18px;
+    background:#555;
+    color:#fff;
+    border:none;
+    border-radius:6px;
+  }
 </style>
 </head>
 <body>
@@ -18,25 +27,19 @@
   <p>パスワードを入力してください</p>
   <input id="password" type="password">
   <br>
-  <button id="startBtn">配信開始</button>
+  <button id="startBtn" class="btn">配信開始</button>
 </div>
 
 <!-- 配信画面 -->
 <div id="streamArea" style="display:none;">
 
   <!-- ★黒画面の上に重ねて表示する配信終了ボタン -->
-  <button id="stopBtn" style="
+  <button id="stopBtn" class="btn" style="
       display:none;
       position:fixed;
       top:20px;
       right:20px;
-      padding:12px 20px;
-      font-size:18px;
-      background:#555;
-      color:#fff;
-      border:none;
-      border-radius:6px;
-      z-index:10000; /* 黒画面より上に表示 */
+      z-index:10000;
   ">
       配信終了
   </button>
@@ -46,7 +49,7 @@
         style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
 
   <!-- 受信側からの音声（初期は muted） -->
-  <audio id="remoteAudio" autoplay muted></audio>
+  <audio id="remoteAudio" autoplay></audio>
 
   <!-- 黒画面（省エネ） -->
   <div id="blackCover" style="
