@@ -18,6 +18,7 @@
 
 <br>
 <button id="startBtn">配信開始</button>
+<button id="stopBtn" style="display:none;">配信終了</button>
 
 <!-- Safari が WebRTC を維持するための最小 video（完全非表示） -->
 <video id="localVideo" autoplay playsinline muted
@@ -40,9 +41,10 @@
     font-size:24px;
     font-weight:bold;
     text-align:center;
-    padding-top:40vh;
+    padding-top:35vh;
 ">
-    配信中
+    配信中<br>
+    <span id="viewerText" style="font-size:18px; opacity:0.7;">0人視聴中</span>
 </div>
 
 <script>
@@ -90,6 +92,12 @@ document.getElementById("startBtn").onclick = async () => {
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
 
+        // ★視聴者数の更新
+        if (data.type === "viewer-count") {
+            document.getElementById("viewerText").innerText =
+                `${data.count}人視聴中`;
+        }
+
         // ★新しい受信者が来たら PeerConnection を作成
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
@@ -130,6 +138,32 @@ document.getElementById("startBtn").onclick = async () => {
 
     // ★配信開始後に黒画面を表示（省エネ）
     document.getElementById("blackCover").style.display = "block";
+
+    // ★配信終了ボタンを表示
+    document.getElementById("stopBtn").style.display = "inline-block";
+    document.getElementById("startBtn").style.display = "none";
+};
+
+// ★配信終了
+document.getElementById("stopBtn").onclick = () => {
+    // WebSocket を閉じる
+    if (ws) ws.close();
+
+    // PeerConnection を閉じる
+    Object.values(peers).forEach(peer => peer.close());
+    peers = {};
+
+    // カメラ停止
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+    }
+
+    // 黒画面を消す
+    document.getElementById("blackCover").style.display = "none";
+
+    // UI を元に戻す
+    document.getElementById("startBtn").style.display = "inline-block";
+    document.getElementById("stopBtn").style.display = "none";
 };
 
 // ★PeerConnection 作成
