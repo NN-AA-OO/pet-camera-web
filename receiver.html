@@ -11,6 +11,7 @@
   }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
+  #logArea { white-space:pre-wrap; text-align:left; font-size:14px; background:#222; padding:10px; margin-top:20px; }
 </style>
 </head>
 <body>
@@ -32,7 +33,15 @@
 <video id="remoteVideo" autoplay playsinline muted></video>
 <audio id="remoteAudio" autoplay></audio>
 
+<div id="logArea"></div>
+
 <script>
+function log(msg) {
+    const area = document.getElementById("logArea");
+    area.textContent += msg + "\n";
+    console.log(msg);
+}
+
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
 let ws;
@@ -66,6 +75,7 @@ document.getElementById("connectBtn").onclick = async () => {
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type:"auth", password }));
+        log("WebSocket connected");
     };
 
     ws.onmessage = async (msg) => {
@@ -78,6 +88,7 @@ document.getElementById("connectBtn").onclick = async () => {
 
         if (data.type === "receiver-id") {
             receiverId = data.receiverId;
+            log("receiver-id: " + receiverId);
         }
 
         if (data.type === "offer") {
@@ -90,7 +101,7 @@ document.getElementById("connectBtn").onclick = async () => {
             peer = new RTCPeerConnection();
 
             peer.ontrack = (e) => {
-                console.log("receiver ontrack:", e.track.kind);
+                log("receiver ontrack: " + e.track.kind);
 
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
@@ -130,14 +141,14 @@ document.getElementById("connectBtn").onclick = async () => {
                 video:false
             });
 
-            console.log("receiver local audio tracks:", localAudioStream.getAudioTracks());
+            log("receiver local audio tracks: " + JSON.stringify(localAudioStream.getAudioTracks()));
 
             localAudioStream.getAudioTracks().forEach(t => {
                 t.enabled = micEnabled;
                 peer.addTrack(t, localAudioStream);
             });
 
-            console.log("receiver senders:", peer.getSenders());
+            log("receiver senders: " + JSON.stringify(peer.getSenders()));
 
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
@@ -161,7 +172,7 @@ document.getElementById("connectBtn").onclick = async () => {
         if (data.type === "candidate") {
             if (peer) {
                 try { await peer.addIceCandidate(data.candidate); }
-                catch(e){ console.error(e); }
+                catch(e){ log("candidate error: " + e); }
             }
         }
     };
