@@ -54,11 +54,20 @@ let localStream;
 let ws;
 let peers = {};
 
-// ★6Mbps 高画質用 SDP 書き換え
+// ★6Mbps 高画質用 SDP 書き換え（video の payload type を安全に検出）
 function forceHighQuality(sdp) {
+    const videoMatch = sdp.match(/m=video \d+ RTP\/SAVPF ([0-9 ]+)/);
+    if (!videoMatch) return sdp;
+
+    const pts = videoMatch[1].trim().split(" ");
+    const pt = pts[0]; // 先頭の payload type を使用
+
+    const fmtpRegex = new RegExp(`a=fmtp:${pt} .*\\r\\n`);
+    if (!fmtpRegex.test(sdp)) return sdp;
+
     return sdp.replace(
-        /a=fmtp:96 .*\r\n/,
-        "a=fmtp:96 x-google-max-bitrate=6000000;x-google-min-bitrate=3000000;x-google-start-bitrate=4500000\r\n"
+        fmtpRegex,
+        `a=fmtp:${pt} x-google-max-bitrate=6000000;x-google-min-bitrate=3000000;x-google-start-bitrate=4500000\r\n`
     );
 }
 
@@ -102,7 +111,6 @@ document.getElementById("startBtn").onclick = async () => {
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
 
-            // 古い peer が残っていたら安全に削除
             if (peers[receiverId]) {
                 try { peers[receiverId].close(); } catch(e){}
             }
@@ -111,7 +119,7 @@ document.getElementById("startBtn").onclick = async () => {
             peers[receiverId] = peer;
 
             let offer = await peer.createOffer();
-            offer.sdp = forceHighQuality(offer.sdp);   // ★ここで6Mbpsに
+            offer.sdp = forceHighQuality(offer.sdp);
             await peer.setLocalDescription(offer);
 
             await waitIce(peer);
@@ -152,28 +160,21 @@ document.getElementById("startBtn").onclick = async () => {
 // ★配信終了
 document.getElementById("stopBtn").onclick = () => {
 
-    // WebSocket を閉じる
     if (ws) ws.close();
     ws = null;
 
-    // PeerConnection を閉じる
     Object.values(peers).forEach(peer => {
         try { peer.close(); } catch(e){}
     });
     peers = {};
 
-    // カメラ停止
     if (localStream) {
         localStream.getTracks().forEach(t => t.stop());
     }
 
-    // 黒画面を消す
     document.getElementById("blackCover").style.display = "none";
-
-    // ★視聴者数をリセット
     document.getElementById("viewerText").innerText = "0人視聴中";
 
-    // UI を元に戻す
     document.getElementById("startBtn").style.display = "inline-block";
     document.getElementById("stopBtn").style.display = "none";
 };
@@ -185,12 +186,11 @@ function createPeer(receiverId) {
     // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★受信者の音声を受け取るための transceiver（必須）
+    // ★受信者の音声を受け取るための transceiver
     peer.addTransceiver("audio", { direction: "recvonly" });
 
     // ★受信者からの音声を受信
     peer.ontrack = (e) => {
-        console.log("sender ontrack:", e.track.kind);
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
             if (!audioStream) {
