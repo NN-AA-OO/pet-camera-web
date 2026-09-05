@@ -103,7 +103,7 @@ function forceHighQuality(sdp) {
 
     return sdp.replace(
         fmtpRegex,
-        `a=fmtp:${pt} x-google-max-bitrate=6000000;x-google-min-bitrate=3000000;x-google-start-bitrate=4500000\r\n`
+        `a=fmtp:${pt} x-google-max-bitrate=10000000;x-google-min-bitrate=8000000;x-google-start-bitrate=9000000\r\n`
     );
 }
 
