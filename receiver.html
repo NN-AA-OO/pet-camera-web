@@ -122,9 +122,14 @@ document.getElementById("connectBtn").onclick = async () => {
 
                 // ★自分のマイクを取得して送信（双方向音声）
                 localAudioStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    },
                     video: false
                 });
+
                 localAudioStream.getAudioTracks().forEach(t => {
                     t.enabled = micEnabled;
                     peer.addTrack(t, localAudioStream);
