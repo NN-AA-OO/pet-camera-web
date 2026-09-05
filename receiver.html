@@ -11,37 +11,32 @@
   }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
-  #logArea { white-space:pre-wrap; text-align:left; font-size:14px; background:#222; padding:10px; margin-top:20px; }
 </style>
 </head>
 <body>
 
 <h2>ペットカメラ（受信側）</h2>
 
-<p>パスワードを入力してください</p>
-<input id="password" type="password">
+<div id="authArea">
+  <p>パスワードを入力してください</p>
+  <input id="password" type="password">
+  <br>
+  <button id="connectBtn">接続</button>
+</div>
 
-<br>
-<button id="connectBtn">接続</button>
-<button id="disconnectBtn" style="display:none;">接続終了</button>
+<div id="streamArea" style="display:none;">
+  <button id="disconnectBtn">接続終了</button>
 
-<button id="audioToggleIn" disabled>こちらのマイクOFF</button>
-<button id="audioToggleOut" disabled>相手の音声OFF</button>
+  <button id="audioToggleIn" disabled>こちらのマイクOFF</button>
+  <button id="audioToggleOut" disabled>相手の音声OFF</button>
 
-<p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
+  <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
-<video id="remoteVideo" autoplay playsinline muted></video>
-<audio id="remoteAudio" autoplay></audio>
-
-<div id="logArea"></div>
+  <video id="remoteVideo" autoplay playsinline muted></video>
+  <audio id="remoteAudio" autoplay></audio>
+</div>
 
 <script>
-function log(msg) {
-    const area = document.getElementById("logArea");
-    area.textContent += msg + "\n";
-    console.log(msg);
-}
-
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
 let ws;
@@ -52,6 +47,7 @@ let micEnabled = true;
 let remoteAudioEnabled = true;
 let localAudioStream;
 
+// ★自分のマイク ON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
     micEnabled = !micEnabled;
     document.getElementById("audioToggleIn").innerText =
@@ -61,6 +57,7 @@ document.getElementById("audioToggleIn").onclick = () => {
     }
 };
 
+// ★相手の音声 ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -68,14 +65,18 @@ document.getElementById("audioToggleOut").onclick = () => {
     document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
+// ★接続開始
 document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
+
+    // UI 切り替え
+    document.getElementById("authArea").style.display = "none";
+    document.getElementById("streamArea").style.display = "block";
 
     ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type:"auth", password }));
-        log("WebSocket connected");
     };
 
     ws.onmessage = async (msg) => {
@@ -88,11 +89,11 @@ document.getElementById("connectBtn").onclick = async () => {
 
         if (data.type === "receiver-id") {
             receiverId = data.receiverId;
-            log("receiver-id: " + receiverId);
         }
 
         if (data.type === "offer") {
 
+            // 古い peer を閉じる
             if (peer) {
                 try { peer.close(); } catch(e){}
                 peer = null;
@@ -100,9 +101,8 @@ document.getElementById("connectBtn").onclick = async () => {
 
             peer = new RTCPeerConnection();
 
+            // ★送信者からの映像・音声を受信
             peer.ontrack = (e) => {
-                log("receiver ontrack: " + e.track.kind);
-
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
                     if (!vs) {
@@ -132,6 +132,7 @@ document.getElementById("connectBtn").onclick = async () => {
                 }
             };
 
+            // ★自分のマイクを送信
             localAudioStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation:true,
@@ -141,14 +142,10 @@ document.getElementById("connectBtn").onclick = async () => {
                 video:false
             });
 
-            log("receiver local audio tracks: " + JSON.stringify(localAudioStream.getAudioTracks()));
-
             localAudioStream.getAudioTracks().forEach(t => {
                 t.enabled = micEnabled;
                 peer.addTrack(t, localAudioStream);
             });
-
-            log("receiver senders: " + JSON.stringify(peer.getSenders()));
 
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
@@ -162,9 +159,7 @@ document.getElementById("connectBtn").onclick = async () => {
                 receiverId
             }));
 
-            document.getElementById("disconnectBtn").style.display = "inline-block";
-            document.getElementById("connectBtn").style.display = "none";
-
+            // ボタン有効化
             document.getElementById("audioToggleIn").disabled = false;
             document.getElementById("audioToggleOut").disabled = false;
         }
@@ -172,12 +167,13 @@ document.getElementById("connectBtn").onclick = async () => {
         if (data.type === "candidate") {
             if (peer) {
                 try { await peer.addIceCandidate(data.candidate); }
-                catch(e){ log("candidate error: " + e); }
+                catch(e){}
             }
         }
     };
 };
 
+// ★接続終了（初期画面に戻す）
 document.getElementById("disconnectBtn").onclick = () => {
 
     if (ws) ws.close();
@@ -195,8 +191,9 @@ document.getElementById("disconnectBtn").onclick = () => {
     remoteVideo.srcObject = null;
     remoteAudio.srcObject = null;
 
-    document.getElementById("connectBtn").style.display = "inline-block";
-    document.getElementById("disconnectBtn").style.display = "none";
+    // UI 初期化
+    document.getElementById("streamArea").style.display = "none";
+    document.getElementById("authArea").style.display = "block";
 
     document.getElementById("viewerCount").innerText = "視聴者数：0人";
 
@@ -204,6 +201,7 @@ document.getElementById("disconnectBtn").onclick = () => {
     document.getElementById("audioToggleOut").disabled = true;
 };
 
+// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
