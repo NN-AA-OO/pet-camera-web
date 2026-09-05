@@ -17,15 +17,18 @@
     border-radius:6px;
   }
 
-  /* ★receiver と完全に揃えた input */
+  /* receiver と揃えた入力欄 */
   input {
     padding:10px;
     font-size:18px;
     border-radius:6px;
     width:200px;
+    border:1px solid #555;
+    background:#111;
+    color:#fff;
+    box-sizing:border-box;
   }
 </style>
-
 </head>
 <body>
 
@@ -42,7 +45,7 @@
 <!-- 配信画面 -->
 <div id="streamArea" style="display:none;">
 
-  <!-- ★黒画面の上に重ねて表示する配信終了ボタン -->
+  <!-- 黒画面の上に重ねて表示する配信終了ボタン -->
   <button id="stopBtn" class="btn" style="
       display:none;
       position:fixed;
@@ -57,7 +60,7 @@
   <video id="localVideo" autoplay playsinline muted
         style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
 
-  <!-- 受信側からの音声（初期は muted） -->
+  <!-- 受信側からの音声（送信者が聞く用） -->
   <audio id="remoteAudio" autoplay></audio>
 
   <!-- 黒画面（省エネ） -->
@@ -88,7 +91,6 @@ let localStream;
 let ws;
 let peers = {};
 
-// ★高画質 SDP 書き換え
 function forceHighQuality(sdp) {
     const videoMatch = sdp.match(/m=video \d+ RTP\/SAVPF ([0-9 ]+)/);
     if (!videoMatch) return sdp;
@@ -105,15 +107,12 @@ function forceHighQuality(sdp) {
     );
 }
 
-// ★配信開始
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // UI 切り替え
     document.getElementById("authArea").style.display = "none";
     document.getElementById("streamArea").style.display = "block";
 
-    // カメラ＋マイク取得
     localStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode:"environment", width:1280, height:720, frameRate:30 },
         audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
@@ -121,7 +120,6 @@ document.getElementById("startBtn").onclick = async () => {
 
     document.getElementById("localVideo").srcObject = localStream;
 
-    // WebSocket 接続
     ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
@@ -172,11 +170,9 @@ document.getElementById("startBtn").onclick = async () => {
         }
     };
 
-    // ★配信終了ボタンを表示
     document.getElementById("stopBtn").style.display = "inline-block";
 };
 
-// ★配信終了（初期画面に戻す）
 document.getElementById("stopBtn").onclick = () => {
 
     if (ws) ws.close();
@@ -191,27 +187,21 @@ document.getElementById("stopBtn").onclick = () => {
         localStream.getTracks().forEach(t => t.stop());
     }
 
-    // UI 初期化
     document.getElementById("streamArea").style.display = "none";
     document.getElementById("authArea").style.display = "block";
 
     document.getElementById("viewerText").innerText = "0人視聴中";
 
-    // ボタン非表示
     document.getElementById("stopBtn").style.display = "none";
 };
 
-// ★PeerConnection 作成
 function createPeer(receiverId) {
     const peer = new RTCPeerConnection();
 
-    // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // 受信者の音声を受け取るための transceiver
     peer.addTransceiver("audio", { direction:"recvonly" });
 
-    // 受信者からの音声を受信
     peer.ontrack = (e) => {
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
@@ -236,7 +226,6 @@ function createPeer(receiverId) {
     return peer;
 }
 
-// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
