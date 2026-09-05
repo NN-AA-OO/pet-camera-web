@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <title>ペットカメラ（送信側）</title>
 <style>
-  body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-  video { width: 90%; margin-top: 20px; background: #000; }
-  button { padding: 10px 20px; margin: 10px; font-size: 18px; }
-  input { padding: 10px; font-size: 18px; }
+  body { background:#111; color:#fff; font-family:sans-serif; text-align:center; }
+  video { width:90%; margin-top:20px; background:#000; }
+  button { padding:10px 20px; margin:10px; font-size:18px; }
+  input { padding:10px; font-size:18px; }
 </style>
 </head>
 <body>
@@ -23,20 +23,18 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
-<!-- ★送信側の映像を表示（Safariが描画を認識するため必須） -->
 <video id="localVideo" autoplay playsinline muted></video>
-
-<!-- 受信側からの音声を再生するための隠しaudio -->
 <audio id="remoteAudio" autoplay></audio>
 
 <script>
-const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
-let localStream;                 // iPadのカメラ＋マイク
-let ws;                          // WebSocket
-let peers = {};                  // receiverId ごとの RTCPeerConnection
-let audioOutEnabled = true;      // こちらの音声（送信）ON/OFF
+const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
-// ★こちらの音声ON/OFF（iPad → iPhone）
+let localStream;
+let ws;
+let peers = {};
+let audioOutEnabled = true;
+
+// ★音声ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     audioOutEnabled = !audioOutEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -50,136 +48,86 @@ document.getElementById("audioToggleOut").onclick = () => {
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // ★カメラ＋マイク取得（背面カメラ）
+    // ★Safari互換のカメラ設定
     localStream = await navigator.mediaDevices.getUserMedia({
         video: {
-            facingMode: { exact: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-            frameRate: { ideal: 30, max: 30 }
+            facingMode: "environment",
+            width: 1280,
+            height: 720,
+            frameRate: 30
         },
-        audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-        }
+        audio: true
     });
 
-    // ★映像を video に表示（Safariが描画を認識するため必須）
-    const localVideo = document.getElementById("localVideo");
-    localVideo.srcObject = localStream;
+    document.getElementById("localVideo").srcObject = localStream;
 
     ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "auth", password }));
+        ws.send(JSON.stringify({ type:"auth", password }));
     };
 
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
 
-        // ★視聴者数表示
         if (data.type === "viewer-count") {
             document.getElementById("viewerCount").innerText =
                 `視聴者数：${data.count}人`;
         }
 
-        // ★認証成功
-        if (data.type === "auth-ok") {
-            console.log("sender 認証OK");
-        }
-
-        // ★新しい受信者が来た
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
-            console.log("新規受信者ID=", receiverId);
 
-            // ★この受信者用の PeerConnection を作成
-            const peer = createPeerForReceiver(receiverId);
+            const peer = createPeer(receiverId);
             peers[receiverId] = peer;
 
-            // ★offer 作成（ICE 完了まで待つ）
             const offer = await peer.createOffer();
             await peer.setLocalDescription(offer);
 
-            await waitForIceComplete(peer);
+            await waitIce(peer);
 
             ws.send(JSON.stringify({
-                type: "offer",
-                offer: peer.localDescription,
+                type:"offer",
+                offer:peer.localDescription,
                 receiverId
             }));
         }
 
-        // ★answer を受信（特定 receiverId 用）
         if (data.type === "answer") {
-            const receiverId = data.receiverId;
-            const peer = peers[receiverId];
+            const peer = peers[data.receiverId];
             if (peer) {
                 await peer.setRemoteDescription(data.answer);
-                console.log("answer を適用 receiverId=", receiverId);
             }
         }
 
-        // ★candidate を受信
         if (data.type === "candidate") {
-            const receiverId = data.receiverId;
-            const peer = peers[receiverId];
+            const peer = peers[data.receiverId];
             if (peer) {
-                try {
-                    await peer.addIceCandidate(data.candidate);
-                } catch (e) {
-                    console.error("addIceCandidate error", e);
-                }
+                try { await peer.addIceCandidate(data.candidate); }
+                catch(e){ console.error(e); }
             }
-        }
-
-        // ★sender が切断された通知（今回はログだけ）
-        if (data.type === "sender-disconnected") {
-            console.log("sender-disconnected 受信（本側では特に処理なし）");
         }
     };
 };
 
-// ★receiver ごとに PeerConnection を作る
-function createPeerForReceiver(receiverId) {
+// ★PeerConnection作成
+function createPeer(receiverId) {
     const peer = new RTCPeerConnection();
 
-    // ★こちらの映像＋音声を送る
+    // ★映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★ここでビットレートを設定する
-    const senderVideo = peer.getSenders().find(s => s.track.kind === "video");
-    if (senderVideo) {
-        senderVideo.setParameters({
-            encodings: [{
-                maxBitrate: 2_000_000   // 2Mbps（高画質）
-            }]
-        });
-    }
-
-    // ★音声ビットレート設定
-    const senderAudio = peer.getSenders().find(s => s.track.kind === "audio");
-    if (senderAudio) {
-        senderAudio.setParameters({
-            encodings: [{
-                maxBitrate: 32_000   // 32kbps（人の声に十分）
-            }]
-        });
-    }
-
-    // ★受信側からの音声を受け取る（双方向音声）
+    // ★受信側からの音声を受け取る
     peer.ontrack = (e) => {
-        const remoteStream = e.streams[0];
-        document.getElementById("remoteAudio").srcObject = remoteStream;
+        const audioStream = new MediaStream([e.track]);
+        document.getElementById("remoteAudio").srcObject = audioStream;
     };
 
-    // ★ICE candidate を送信
     peer.onicecandidate = (e) => {
         if (e.candidate && ws) {
             ws.send(JSON.stringify({
-                type: "candidate",
-                candidate: e.candidate,
+                type:"candidate",
+                candidate:e.candidate,
                 receiverId
             }));
         }
@@ -188,18 +136,13 @@ function createPeerForReceiver(receiverId) {
     return peer;
 }
 
-// ★ICE gathering 完了を待つ
-function waitForIceComplete(peer) {
+// ★ICE完了待ち
+function waitIce(peer) {
     return new Promise(resolve => {
-        if (peer.iceGatheringState === "complete") {
-            resolve();
-        } else {
-            peer.onicegatheringstatechange = () => {
-                if (peer.iceGatheringState === "complete") {
-                    resolve();
-                }
-            };
-        }
+        if (peer.iceGatheringState === "complete") resolve();
+        peer.onicegatheringstatechange = () => {
+            if (peer.iceGatheringState === "complete") resolve();
+        };
     });
 }
 </script>
