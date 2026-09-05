@@ -7,77 +7,58 @@
   body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
-
-  /* ログ表示領域（黒画面の上に重ねる） */
-  #logArea {
-    position:fixed;
-    bottom:0;
-    left:0;
-    width:100%;
-    max-height:40vh;
-    overflow-y:auto;
-    background:#222;
-    color:#0f0;
-    font-size:14px;
-    padding:10px;
-    z-index:10000; /* 黒画面より上 */
-    white-space:pre-wrap;
-    text-align:left;
-  }
 </style>
 </head>
 <body>
 
 <h2>ペットカメラ（送信側）</h2>
 
-<p>パスワードを入力してください</p>
-<input id="password" type="password">
-
-<br>
-<button id="startBtn">配信開始</button>
-<button id="stopBtn" style="display:none;">配信終了</button>
-
-<video id="localVideo" autoplay playsinline muted
-       style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
-
-<audio id="remoteAudio" autoplay></audio>
-
-<!-- 黒画面 -->
-<div id="blackCover" style="
-    position:fixed;
-    top:0;
-    left:0;
-    width:100vw;
-    height:100vh;
-    background:black;
-    z-index:9999;
-    display:none;
-    color:#888;
-    font-size:24px;
-    font-weight:bold;
-    text-align:center;
-    padding-top:35vh;
-">
-    配信中<br>
-    <span id="viewerText" style="font-size:18px; opacity:0.7;">0人視聴中</span>
+<div id="authArea">
+  <p>パスワードを入力してください</p>
+  <input id="password" type="password">
+  <br>
+  <button id="startBtn">配信開始</button>
 </div>
 
-<!-- ログ表示領域（黒画面の上に表示される） -->
-<div id="logArea"></div>
+<div id="streamArea" style="display:none;">
+  <button id="stopBtn">配信終了</button>
+
+  <!-- Safari が WebRTC を維持するための最小 video（完全非表示） -->
+  <video id="localVideo" autoplay playsinline muted
+        style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
+
+  <!-- 受信側からの音声（ハウリング防止のため muted のまま） -->
+  <audio id="remoteAudio" autoplay muted></audio>
+
+  <!-- 配信開始後に画面全体を黒で覆う -->
+  <div id="blackCover" style="
+      position:fixed;
+      top:0;
+      left:0;
+      width:100vw;
+      height:100vh;
+      background:black;
+      z-index:9999;
+      display:block;
+      color:#888;
+      font-size:24px;
+      font-weight:bold;
+      text-align:center;
+      padding-top:35vh;
+  ">
+      配信中<br>
+      <span id="viewerText" style="font-size:18px; opacity:0.7;">0人視聴中</span>
+  </div>
+</div>
 
 <script>
-function log(msg) {
-    const area = document.getElementById("logArea");
-    area.textContent += msg + "\n";
-    console.log(msg);
-}
-
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
 let localStream;
 let ws;
 let peers = {};
 
+// ★安全な高画質 SDP 書き換え
 function forceHighQuality(sdp) {
     const videoMatch = sdp.match(/m=video \d+ RTP\/SAVPF ([0-9 ]+)/);
     if (!videoMatch) return sdp;
@@ -94,23 +75,27 @@ function forceHighQuality(sdp) {
     );
 }
 
+// ★配信開始
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
+    // UI 切り替え
+    document.getElementById("authArea").style.display = "none";
+    document.getElementById("streamArea").style.display = "block";
+
+    // カメラ＋マイク取得
     localStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode:"environment", width:1280, height:720, frameRate:30 },
         audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
     });
 
-    log("sender local audio tracks: " + JSON.stringify(localStream.getAudioTracks()));
-
     document.getElementById("localVideo").srcObject = localStream;
 
+    // WebSocket 接続
     ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type:"auth", password }));
-        log("WebSocket connected");
     };
 
     ws.onmessage = async (msg) => {
@@ -141,64 +126,61 @@ document.getElementById("startBtn").onclick = async () => {
                 offer:peer.localDescription,
                 receiverId
             }));
-
-            log("offer sent to receiver " + receiverId);
         }
 
         if (data.type === "answer") {
             const peer = peers[data.receiverId];
-            if (peer) {
-                await peer.setRemoteDescription(data.answer);
-                log("answer received from receiver " + data.receiverId);
-            }
+            if (peer) await peer.setRemoteDescription(data.answer);
         }
 
         if (data.type === "candidate") {
             const peer = peers[data.receiverId];
             if (peer) {
                 try { await peer.addIceCandidate(data.candidate); }
-                catch(e){ log("candidate error: " + e); }
+                catch(e){}
             }
         }
     };
-
-    document.getElementById("blackCover").style.display = "block";
-    document.getElementById("stopBtn").style.display = "inline-block";
-    document.getElementById("startBtn").style.display = "none";
 };
 
+// ★配信終了（初期画面に戻す）
 document.getElementById("stopBtn").onclick = () => {
-    log("配信終了ボタンが押されました");
 
+    // WebSocket を閉じる
     if (ws) ws.close();
     ws = null;
 
-    Object.values(peers).forEach(peer => { try { peer.close(); } catch(e){} });
+    // PeerConnection を閉じる
+    Object.values(peers).forEach(peer => {
+        try { peer.close(); } catch(e){}
+    });
     peers = {};
 
-    if (localStream) localStream.getTracks().forEach(t => t.stop());
+    // カメラ停止
+    if (localStream) {
+        localStream.getTracks().forEach(t => t.stop());
+    }
 
-    document.getElementById("blackCover").style.display = "none";
+    // UI を初期状態に戻す
+    document.getElementById("streamArea").style.display = "none";
+    document.getElementById("authArea").style.display = "block";
+
+    // viewer 表示リセット
     document.getElementById("viewerText").innerText = "0人視聴中";
-
-    document.getElementById("startBtn").style.display = "inline-block";
-    document.getElementById("stopBtn").style.display = "none";
-
-    log("黒画面解除 → ログ確認可能");
 };
 
+// ★PeerConnection 作成
 function createPeer(receiverId) {
     const peer = new RTCPeerConnection();
 
+    // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
+    // 受信者の音声を受け取るための transceiver
     peer.addTransceiver("audio", { direction:"recvonly" });
 
-    log("sender transceivers: " + JSON.stringify(peer.getTransceivers()));
-
+    // 受信者からの音声を受信
     peer.ontrack = (e) => {
-        log("sender ontrack: " + e.track.kind);
-
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
             if (!audioStream) {
@@ -222,6 +204,7 @@ function createPeer(receiverId) {
     return peer;
 }
 
+// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
