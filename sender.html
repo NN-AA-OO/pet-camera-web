@@ -4,8 +4,7 @@
 <meta charset="UTF-8">
 <title>ペットカメラ（送信側）</title>
 <style>
-  body { background:#111; color:#fff; font-family:sans-serif; text-align:center; }
-  video { width:90%; margin-top:20px; background:#000; }
+  body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
 </style>
@@ -23,8 +22,15 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
-<video id="localVideo" autoplay playsinline muted></video>
-<audio id="remoteAudio" autoplay></audio>
+<!-- Safari が描画を認識するための最小 video（完全非表示） -->
+<video id="localVideo" autoplay playsinline muted
+       style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
+
+<!-- 受信側からの音声（ハウリング防止のため常に muted） -->
+<audio id="remoteAudio" autoplay muted></audio>
+
+<!-- 画面全体を黒で覆う -->
+<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:black;z-index:9999;"></div>
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
@@ -34,7 +40,7 @@ let ws;
 let peers = {};
 let audioOutEnabled = true;
 
-// ★音声ON/OFF
+// ★こちらの音声ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     audioOutEnabled = !audioOutEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -44,11 +50,19 @@ document.getElementById("audioToggleOut").onclick = () => {
     }
 };
 
+// ★4Mbps 高画質用 SDP 書き換え
+function forceHighQuality(sdp) {
+    return sdp.replace(
+        /a=fmtp:96 .*\r\n/,
+        "a=fmtp:96 x-google-max-bitrate=4000000;x-google-min-bitrate=2000000;x-google-start-bitrate=3000000\r\n"
+    );
+}
+
 // ★配信開始
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // ★Safari互換のカメラ設定
+    // Safari 互換のカメラ設定（背面・720p）
     localStream = await navigator.mediaDevices.getUserMedia({
         video: {
             facingMode: "environment",
@@ -56,7 +70,11 @@ document.getElementById("startBtn").onclick = async () => {
             height: 720,
             frameRate: 30
         },
-        audio: true
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        }
     });
 
     document.getElementById("localVideo").srcObject = localStream;
@@ -81,7 +99,8 @@ document.getElementById("startBtn").onclick = async () => {
             const peer = createPeer(receiverId);
             peers[receiverId] = peer;
 
-            const offer = await peer.createOffer();
+            let offer = await peer.createOffer();
+            offer.sdp = forceHighQuality(offer.sdp);   // ★ここで4Mbpsに
             await peer.setLocalDescription(offer);
 
             await waitIce(peer);
@@ -110,17 +129,20 @@ document.getElementById("startBtn").onclick = async () => {
     };
 };
 
-// ★PeerConnection作成
+// ★PeerConnection 作成
 function createPeer(receiverId) {
     const peer = new RTCPeerConnection();
 
-    // ★映像＋音声を送信
+    // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★受信側からの音声を受け取る
+    // 受信側からの音声（ハウリング防止のため muted audio にだけ流す）
     peer.ontrack = (e) => {
-        const audioStream = new MediaStream([e.track]);
-        document.getElementById("remoteAudio").srcObject = audioStream;
+        if (e.track.kind === "audio") {
+            const audioStream = new MediaStream([e.track]);
+            const audio = document.getElementById("remoteAudio");
+            audio.srcObject = audioStream;
+        }
     };
 
     peer.onicecandidate = (e) => {
@@ -136,7 +158,7 @@ function createPeer(receiverId) {
     return peer;
 }
 
-// ★ICE完了待ち
+// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
