@@ -22,6 +22,8 @@
 
 <br>
 <button id="connectBtn">接続</button>
+<button id="disconnectBtn" style="display:none;">接続終了</button>
+
 <button id="audioToggleIn">こちらのマイクOFF</button>
 <button id="audioToggleOut">相手の音声OFF</button>
 
@@ -41,7 +43,7 @@ let micEnabled = true;
 let remoteAudioEnabled = true;
 let localAudioStream;
 
-// 自分のマイクON/OFF
+// ★自分のマイクON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
     micEnabled = !micEnabled;
     document.getElementById("audioToggleIn").innerText =
@@ -51,7 +53,7 @@ document.getElementById("audioToggleIn").onclick = () => {
     }
 };
 
-// 相手の音声ON/OFF
+// ★相手の音声ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -59,7 +61,7 @@ document.getElementById("audioToggleOut").onclick = () => {
     document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
-// 接続
+// ★接続
 document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
@@ -85,7 +87,7 @@ document.getElementById("connectBtn").onclick = async () => {
             if (!peer) {
                 peer = new RTCPeerConnection();
 
-                // トラックごとに処理（Safari対応）
+                // ★トラックごとに処理（Safari対応）
                 peer.ontrack = (e) => {
                     if (e.track.kind === "video") {
                         const vs = new MediaStream([e.track]);
@@ -93,8 +95,7 @@ document.getElementById("connectBtn").onclick = async () => {
                     }
                     if (e.track.kind === "audio") {
                         const as = new MediaStream([e.track]);
-                        const audio = document.getElementById("remoteAudio");
-                        audio.srcObject = as;
+                        document.getElementById("remoteAudio").srcObject = as;
                     }
                 };
 
@@ -108,7 +109,7 @@ document.getElementById("connectBtn").onclick = async () => {
                     }
                 };
 
-                // 自分のマイクを送信
+                // ★自分のマイクを送信
                 localAudioStream = await navigator.mediaDevices.getUserMedia({
                     audio: {
                         echoCancellation: true,
@@ -134,6 +135,10 @@ document.getElementById("connectBtn").onclick = async () => {
                 answer:peer.localDescription,
                 receiverId
             }));
+
+            // ★接続終了ボタンを表示
+            document.getElementById("disconnectBtn").style.display = "inline-block";
+            document.getElementById("connectBtn").style.display = "none";
         }
 
         if (data.type === "candidate") {
@@ -145,6 +150,31 @@ document.getElementById("connectBtn").onclick = async () => {
     };
 };
 
+// ★接続終了
+document.getElementById("disconnectBtn").onclick = () => {
+
+    // WebSocket を閉じる
+    if (ws) ws.close();
+
+    // PeerConnection を閉じる
+    if (peer) peer.close();
+    peer = null;
+
+    // マイク停止
+    if (localAudioStream) {
+        localAudioStream.getTracks().forEach(t => t.stop());
+    }
+
+    // 映像・音声をクリア
+    document.getElementById("remoteVideo").srcObject = null;
+    document.getElementById("remoteAudio").srcObject = null;
+
+    // UI を元に戻す
+    document.getElementById("connectBtn").style.display = "inline-block";
+    document.getElementById("disconnectBtn").style.display = "none";
+};
+
+// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
