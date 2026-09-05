@@ -1,4 +1,4 @@
-  <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -23,6 +23,7 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
+<!-- ★送信側の映像を表示（Safariが描画を認識するため必須） -->
 <video id="localVideo" autoplay playsinline muted></video>
 
 <!-- 受信側からの音声を再生するための隠しaudio -->
@@ -64,8 +65,9 @@ document.getElementById("startBtn").onclick = async () => {
         }
     });
 
-
-    document.getElementById("localVideo").srcObject = localStream;
+    // ★映像を video に表示（Safariが描画を認識するため必須）
+    const localVideo = document.getElementById("localVideo");
+    localVideo.srcObject = localStream;
 
     ws = new WebSocket(signalingUrl);
 
@@ -145,6 +147,7 @@ function createPeerForReceiver(receiverId) {
 
     // ★こちらの映像＋音声を送る
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+
     // ★ここでビットレートを設定する
     const senderVideo = peer.getSenders().find(s => s.track.kind === "video");
     if (senderVideo) {
@@ -154,7 +157,8 @@ function createPeerForReceiver(receiverId) {
             }]
         });
     }
-      // ★音声ビットレート設定＋ノイズ抑制
+
+    // ★音声ビットレート設定
     const senderAudio = peer.getSenders().find(s => s.track.kind === "audio");
     if (senderAudio) {
         senderAudio.setParameters({
@@ -166,7 +170,6 @@ function createPeerForReceiver(receiverId) {
 
     // ★受信側からの音声を受け取る（双方向音声）
     peer.ontrack = (e) => {
-        // audio だけ来る想定
         const remoteStream = e.streams[0];
         document.getElementById("remoteAudio").srcObject = remoteStream;
     };
