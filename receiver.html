@@ -24,13 +24,13 @@
 <button id="connectBtn">接続</button>
 <button id="disconnectBtn" style="display:none;">接続終了</button>
 
-<button id="audioToggleIn">こちらのマイクOFF</button>
-<button id="audioToggleOut">相手の音声OFF</button>
+<button id="audioToggleIn" disabled>こちらのマイクOFF</button>
+<button id="audioToggleOut" disabled>相手の音声OFF</button>
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
 <video id="remoteVideo" autoplay playsinline muted></video>
-<audio id="remoteAudio" autoplay playsinline></audio>
+<audio id="remoteAudio" autoplay></audio>
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
@@ -84,54 +84,59 @@ document.getElementById("connectBtn").onclick = async () => {
         }
 
         if (data.type === "offer") {
-            if (!peer) {
-                peer = new RTCPeerConnection();
 
-                // ★Safari完全対応 ontrack（映像が必ず表示される）
-                peer.ontrack = (e) => {
-                    if (e.track.kind === "video") {
-                        let vs = document.getElementById("remoteVideo").srcObject;
-                        if (!vs) {
-                            vs = new MediaStream();
-                            document.getElementById("remoteVideo").srcObject = vs;
-                        }
-                        vs.addTrack(e.track);
-                    }
-
-                    if (e.track.kind === "audio") {
-                        let as = document.getElementById("remoteAudio").srcObject;
-                        if (!as) {
-                            as = new MediaStream();
-                            document.getElementById("remoteAudio").srcObject = as;
-                        }
-                        as.addTrack(e.track);
-                    }
-                };
-
-                peer.onicecandidate = (e) => {
-                    if (e.candidate && ws) {
-                        ws.send(JSON.stringify({
-                            type:"candidate",
-                            candidate:e.candidate,
-                            receiverId
-                        }));
-                    }
-                };
-
-                // ★自分のマイクを送信
-                localAudioStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
-                    video:false
-                });
-                localAudioStream.getAudioTracks().forEach(t => {
-                    t.enabled = micEnabled;
-                    peer.addTrack(t, localAudioStream);
-                });
+            // ★古い peer が残っていたら安全に削除
+            if (peer) {
+                try { peer.close(); } catch(e){}
+                peer = null;
             }
+
+            peer = new RTCPeerConnection();
+
+            // ★Safari完全対応 ontrack（映像が必ず表示される）
+            peer.ontrack = (e) => {
+                if (e.track.kind === "video") {
+                    let vs = remoteVideo.srcObject;
+                    if (!vs) {
+                        vs = new MediaStream();
+                        remoteVideo.srcObject = vs;
+                    }
+                    vs.addTrack(e.track);
+                }
+
+                if (e.track.kind === "audio") {
+                    let as = remoteAudio.srcObject;
+                    if (!as) {
+                        as = new MediaStream();
+                        remoteAudio.srcObject = as;
+                    }
+                    as.addTrack(e.track);
+                }
+            };
+
+            peer.onicecandidate = (e) => {
+                if (e.candidate && ws) {
+                    ws.send(JSON.stringify({
+                        type:"candidate",
+                        candidate:e.candidate,
+                        receiverId
+                    }));
+                }
+            };
+
+            // ★自分のマイクを送信
+            localAudioStream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                },
+                video:false
+            });
+            localAudioStream.getAudioTracks().forEach(t => {
+                t.enabled = micEnabled;
+                peer.addTrack(t, localAudioStream);
+            });
 
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
@@ -145,9 +150,13 @@ document.getElementById("connectBtn").onclick = async () => {
                 receiverId
             }));
 
-            // ★接続終了ボタンを表示
+            // ★UI 更新
             document.getElementById("disconnectBtn").style.display = "inline-block";
             document.getElementById("connectBtn").style.display = "none";
+
+            // ★音声ボタンを有効化
+            document.getElementById("audioToggleIn").disabled = false;
+            document.getElementById("audioToggleOut").disabled = false;
         }
 
         if (data.type === "candidate") {
@@ -164,9 +173,12 @@ document.getElementById("disconnectBtn").onclick = () => {
 
     // WebSocket を閉じる
     if (ws) ws.close();
+    ws = null;
 
     // PeerConnection を閉じる
-    if (peer) peer.close();
+    if (peer) {
+        try { peer.close(); } catch(e){}
+    }
     peer = null;
 
     // マイク停止
@@ -175,12 +187,19 @@ document.getElementById("disconnectBtn").onclick = () => {
     }
 
     // 映像・音声をクリア
-    document.getElementById("remoteVideo").srcObject = null;
-    document.getElementById("remoteAudio").srcObject = null;
+    remoteVideo.srcObject = null;
+    remoteAudio.srcObject = null;
 
     // UI を元に戻す
     document.getElementById("connectBtn").style.display = "inline-block";
     document.getElementById("disconnectBtn").style.display = "none";
+
+    // ★視聴者数リセット
+    document.getElementById("viewerCount").innerText = "視聴者数：0人";
+
+    // ★音声ボタンを無効化
+    document.getElementById("audioToggleIn").disabled = true;
+    document.getElementById("audioToggleOut").disabled = true;
 };
 
 // ICE 完了待ち
