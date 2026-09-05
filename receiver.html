@@ -90,6 +90,8 @@ document.getElementById("connectBtn").onclick = async () => {
             peer = new RTCPeerConnection();
 
             peer.ontrack = (e) => {
+                console.log("receiver ontrack:", e.track.kind);
+
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
                     if (!vs) {
@@ -127,10 +129,15 @@ document.getElementById("connectBtn").onclick = async () => {
                 },
                 video:false
             });
+
+            console.log("receiver local audio tracks:", localAudioStream.getAudioTracks());
+
             localAudioStream.getAudioTracks().forEach(t => {
                 t.enabled = micEnabled;
                 peer.addTrack(t, localAudioStream);
             });
+
+            console.log("receiver senders:", peer.getSenders());
 
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
