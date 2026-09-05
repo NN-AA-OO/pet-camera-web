@@ -43,7 +43,6 @@ let micEnabled = true;
 let remoteAudioEnabled = true;
 let localAudioStream;
 
-// ★自分のマイクON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
     micEnabled = !micEnabled;
     document.getElementById("audioToggleIn").innerText =
@@ -53,7 +52,6 @@ document.getElementById("audioToggleIn").onclick = () => {
     }
 };
 
-// ★相手の音声ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -61,7 +59,6 @@ document.getElementById("audioToggleOut").onclick = () => {
     document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
-// ★接続
 document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
@@ -92,7 +89,6 @@ document.getElementById("connectBtn").onclick = async () => {
 
             peer = new RTCPeerConnection();
 
-            // ★Safari完全対応 ontrack
             peer.ontrack = (e) => {
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
@@ -123,12 +119,11 @@ document.getElementById("connectBtn").onclick = async () => {
                 }
             };
 
-            // ★自分のマイクを送信
             localAudioStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
+                    echoCancellation:true,
+                    noiseSuppression:true,
+                    autoGainControl:true
                 },
                 video:false
             });
@@ -165,7 +160,6 @@ document.getElementById("connectBtn").onclick = async () => {
     };
 };
 
-// ★接続終了
 document.getElementById("disconnectBtn").onclick = () => {
 
     if (ws) ws.close();
@@ -192,7 +186,6 @@ document.getElementById("disconnectBtn").onclick = () => {
     document.getElementById("audioToggleOut").disabled = true;
 };
 
-// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
