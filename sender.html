@@ -190,6 +190,7 @@ function createPeer(receiverId) {
 
     // ★受信者からの音声を受信
     peer.ontrack = (e) => {
+        console.log("sender ontrack:", e.track.kind);
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
             if (!audioStream) {
