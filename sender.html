@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -51,9 +51,15 @@ document.getElementById("startBtn").onclick = async () => {
 
     // ★カメラ＋マイク取得（背面カメラ）
     localStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: "environment" } },
+        video: {
+            facingMode: { exact: "environment" },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+            frameRate: { ideal: 30, max: 30 }
+        },
         audio: true
     });
+
 
     document.getElementById("localVideo").srcObject = localStream;
 
@@ -135,6 +141,15 @@ function createPeerForReceiver(receiverId) {
 
     // ★こちらの映像＋音声を送る
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
+    // ★ここでビットレートを設定する
+    const senderVideo = peer.getSenders().find(s => s.track.kind === "video");
+    if (senderVideo) {
+        senderVideo.setParameters({
+            encodings: [{
+                maxBitrate: 2_000_000   // 2Mbps（高画質）
+            }]
+        });
+    }
 
     // ★受信側からの音声を受け取る（双方向音声）
     peer.ontrack = (e) => {
