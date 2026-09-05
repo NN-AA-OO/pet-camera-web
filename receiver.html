@@ -10,20 +10,36 @@
     background:#000; margin-top:20px;
   }
 
-  /* 接続・接続終了ボタンは元のシンプルな灰色 */
+  /* 接続・接続終了ボタン（灰色） */
   #connectBtn, #disconnectBtn {
-    padding:10px 20px;
+    padding:12px 20px;
     margin:10px;
     font-size:18px;
     background:#555;
     color:#fff;
     border:none;
-    border-radius:6px;
+    border-radius:6px; /* ←角丸統一 */
   }
 
-  /* 音声ボタンは ON＝緑 / OFF＝赤 */
-  .on  { background:#2ecc71; color:#fff; } /* 緑 */
-  .off { background:#e74c3c; color:#fff; } /* 赤 */
+  /* 音声ボタン（ON＝緑 / OFF＝赤） */
+  .on  {
+    background:#2ecc71;
+    color:#fff;
+    padding:12px 20px;   /* ←サイズ統一 */
+    font-size:18px;
+    border:none;
+    border-radius:6px;   /* ←角丸統一 */
+    margin:10px;
+  }
+  .off {
+    background:#e74c3c;
+    color:#fff;
+    padding:12px 20px;   /* ←サイズ統一 */
+    font-size:18px;
+    border:none;
+    border-radius:6px;   /* ←角丸統一 */
+    margin:10px;
+  }
 
   input { padding:10px; font-size:18px; }
 </style>
