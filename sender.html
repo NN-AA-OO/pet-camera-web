@@ -18,19 +18,25 @@
 
 <br>
 <button id="startBtn">配信開始</button>
-<button id="audioToggleOut">こちらの音声OFF</button>
 
-<p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
-
-<!-- Safari が描画を認識するための最小 video（完全非表示） -->
+<!-- Safari が WebRTC を維持するための最小 video（完全非表示） -->
 <video id="localVideo" autoplay playsinline muted
        style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
 
 <!-- 受信側からの音声（ハウリング防止のため常に muted） -->
 <audio id="remoteAudio" autoplay muted></audio>
 
-<!-- 画面全体を黒で覆う -->
-<div style="position:fixed;top:0;left:0;width:100vw;height:100vh;background:black;z-index:9999;"></div>
+<!-- 配信開始後に画面全体を黒で覆う -->
+<div id="blackCover" style="
+    position:fixed;
+    top:0;
+    left:0;
+    width:100vw;
+    height:100vh;
+    background:black;
+    z-index:9999;
+    display:none;
+"></div>
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
@@ -38,17 +44,6 @@ const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 let localStream;
 let ws;
 let peers = {};
-let audioOutEnabled = true;
-
-// ★こちらの音声ON/OFF
-document.getElementById("audioToggleOut").onclick = () => {
-    audioOutEnabled = !audioOutEnabled;
-    document.getElementById("audioToggleOut").innerText =
-        audioOutEnabled ? "こちらの音声OFF" : "こちらの音声ON";
-    if (localStream) {
-        localStream.getAudioTracks().forEach(t => t.enabled = audioOutEnabled);
-    }
-};
 
 // ★4Mbps 高画質用 SDP 書き換え
 function forceHighQuality(sdp) {
@@ -62,7 +57,7 @@ function forceHighQuality(sdp) {
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // Safari 互換のカメラ設定（背面・720p）
+    // ★Safari互換のカメラ設定（背面・720p）
     localStream = await navigator.mediaDevices.getUserMedia({
         video: {
             facingMode: "environment",
@@ -88,11 +83,7 @@ document.getElementById("startBtn").onclick = async () => {
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
 
-        if (data.type === "viewer-count") {
-            document.getElementById("viewerCount").innerText =
-                `視聴者数：${data.count}人`;
-        }
-
+        // ★新しい受信者が来たら PeerConnection を作成
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
 
@@ -112,6 +103,7 @@ document.getElementById("startBtn").onclick = async () => {
             }));
         }
 
+        // ★answer を受信
         if (data.type === "answer") {
             const peer = peers[data.receiverId];
             if (peer) {
@@ -119,6 +111,7 @@ document.getElementById("startBtn").onclick = async () => {
             }
         }
 
+        // ★candidate を受信
         if (data.type === "candidate") {
             const peer = peers[data.receiverId];
             if (peer) {
@@ -127,6 +120,9 @@ document.getElementById("startBtn").onclick = async () => {
             }
         }
     };
+
+    // ★配信開始後に黒画面を表示（省エネ）
+    document.getElementById("blackCover").style.display = "block";
 };
 
 // ★PeerConnection 作成
