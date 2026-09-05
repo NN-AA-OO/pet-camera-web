@@ -4,20 +4,13 @@
 <meta charset="UTF-8">
 <title>ペットカメラ（受信側）</title>
 <style>
-  body { background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-
+  body { background:#111; color:#fff; font-family:sans-serif; text-align:center; }
   video {
-    width: 90%;
-    height: auto;
-    max-height: 70vh;
-    background: #000;
-    margin-top: 20px;
-    position: relative;
-    z-index: 10;
+    width:90%; height:auto; max-height:70vh;
+    background:#000; margin-top:20px;
   }
-
-  button { padding: 10px 20px; margin: 10px; font-size: 18px; }
-  input { padding: 10px; font-size: 18px; }
+  button { padding:10px 20px; margin:10px; font-size:18px; }
+  input { padding:10px; font-size:18px; }
 </style>
 </head>
 <body>
@@ -34,20 +27,19 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
-<!-- ★映像は muted で描画必須 -->
 <video id="remoteVideo" autoplay playsinline muted></video>
-<!-- ★音声は別の audio 要素で再生 -->
 <audio id="remoteAudio" autoplay></audio>
 
 <script>
-const signalingUrl = "wss://pet-camera-server-1.onrender.com"; // ★あなたのURLに変更
-let ws = null;
-let peer = null;
-let receiverId = null;
+const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
-let localAudioStream = null;      // iPhone側マイク
-let micEnabled = true;            // 自分のマイクON/OFF
-let remoteAudioEnabled = true;    // 相手の音声ON/OFF
+let ws;
+let peer;
+let receiverId;
+
+let micEnabled = true;
+let remoteAudioEnabled = true;
+let localAudioStream;
 
 // ★自分のマイクON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
@@ -64,9 +56,7 @@ document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
     document.getElementById("audioToggleOut").innerText =
         remoteAudioEnabled ? "相手の音声OFF" : "相手の音声ON";
-
-    const audio = document.getElementById("remoteAudio");
-    audio.muted = !remoteAudioEnabled;
+    document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
 // ★接続
@@ -76,7 +66,7 @@ document.getElementById("connectBtn").onclick = async () => {
     ws = new WebSocket(signalingUrl);
 
     ws.onopen = () => {
-        ws.send(JSON.stringify({ type: "auth", password }));
+        ws.send(JSON.stringify({ type:"auth", password }));
     };
 
     ws.onmessage = async (msg) => {
@@ -87,32 +77,31 @@ document.getElementById("connectBtn").onclick = async () => {
                 `視聴者数：${data.count}人`;
         }
 
-        if (data.type === "auth-ok") {
-            console.log("receiver 認証OK");
-        }
-
         if (data.type === "receiver-id") {
             receiverId = data.receiverId;
-            console.log("自分の receiverId=", receiverId);
         }
 
         if (data.type === "offer") {
             if (!peer) {
                 peer = new RTCPeerConnection();
 
-                // ★映像＋音声を受信
+                // ★トラックごとに処理（Safari必須）
                 peer.ontrack = (e) => {
-                    const stream = e.streams[0];
-                    console.log("受信したストリーム:", stream);
-                    document.getElementById("remoteVideo").srcObject = stream;
-                    document.getElementById("remoteAudio").srcObject = stream;
+                    if (e.track.kind === "video") {
+                        const vs = new MediaStream([e.track]);
+                        document.getElementById("remoteVideo").srcObject = vs;
+                    }
+                    if (e.track.kind === "audio") {
+                        const as = new MediaStream([e.track]);
+                        document.getElementById("remoteAudio").srcObject = as;
+                    }
                 };
 
                 peer.onicecandidate = (e) => {
-                    if (e.candidate && ws && receiverId != null) {
+                    if (e.candidate && ws) {
                         ws.send(JSON.stringify({
-                            type: "candidate",
-                            candidate: e.candidate,
+                            type:"candidate",
+                            candidate:e.candidate,
                             receiverId
                         }));
                     }
@@ -120,14 +109,9 @@ document.getElementById("connectBtn").onclick = async () => {
 
                 // ★自分のマイクを送信
                 localAudioStream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true
-                    },
-                    video: false
+                    audio:true,
+                    video:false
                 });
-
                 localAudioStream.getAudioTracks().forEach(t => {
                     t.enabled = micEnabled;
                     peer.addTrack(t, localAudioStream);
@@ -137,42 +121,31 @@ document.getElementById("connectBtn").onclick = async () => {
             await peer.setRemoteDescription(data.offer);
             const answer = await peer.createAnswer();
             await peer.setLocalDescription(answer);
-            await waitForIceComplete(peer);
+
+            await waitIce(peer);
 
             ws.send(JSON.stringify({
-                type: "answer",
-                answer: peer.localDescription,
+                type:"answer",
+                answer:peer.localDescription,
                 receiverId
             }));
         }
 
         if (data.type === "candidate") {
             if (peer) {
-                try {
-                    await peer.addIceCandidate(data.candidate);
-                } catch (e) {
-                    console.error("addIceCandidate error", e);
-                }
+                try { await peer.addIceCandidate(data.candidate); }
+                catch(e){ console.error(e); }
             }
-        }
-
-        if (data.type === "sender-disconnected") {
-            console.log("送信側が切断されました");
         }
     };
 };
 
-function waitForIceComplete(peer) {
+function waitIce(peer) {
     return new Promise(resolve => {
-        if (peer.iceGatheringState === "complete") {
-            resolve();
-        } else {
-            peer.onicegatheringstatechange = () => {
-                if (peer.iceGatheringState === "complete") {
-                    resolve();
-                }
-            };
-        }
+        if (peer.iceGatheringState === "complete") resolve();
+        peer.onicegatheringstatechange = () => {
+            if (peer.iceGatheringState === "complete") resolve();
+        };
     });
 }
 </script>
