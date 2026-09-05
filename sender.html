@@ -170,7 +170,7 @@ document.getElementById("stopBtn").onclick = () => {
     // 黒画面を消す
     document.getElementById("blackCover").style.display = "none";
 
-    // ★視聴者数をリセット（重要）
+    // ★視聴者数をリセット
     document.getElementById("viewerText").innerText = "0人視聴中";
 
     // UI を元に戻す
@@ -188,11 +188,15 @@ function createPeer(receiverId) {
     // ★受信者の音声を受け取るための transceiver（必須）
     peer.addTransceiver("audio", { direction: "recvonly" });
 
+    // ★受信者からの音声を受信
     peer.ontrack = (e) => {
         if (e.track.kind === "audio") {
-            const audioStream = new MediaStream([e.track]);
-            const audio = document.getElementById("remoteAudio");
-            audio.srcObject = audioStream;
+            let audioStream = document.getElementById("remoteAudio").srcObject;
+            if (!audioStream) {
+                audioStream = new MediaStream();
+                document.getElementById("remoteAudio").srcObject = audioStream;
+            }
+            audioStream.addTrack(e.track);
         }
     };
 
