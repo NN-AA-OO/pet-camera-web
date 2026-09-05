@@ -7,7 +7,23 @@
   body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
-  #logArea { white-space:pre-wrap; text-align:left; font-size:14px; background:#222; padding:10px; margin-top:20px; }
+
+  /* ログ表示領域（黒画面の上に重ねる） */
+  #logArea {
+    position:fixed;
+    bottom:0;
+    left:0;
+    width:100%;
+    max-height:40vh;
+    overflow-y:auto;
+    background:#222;
+    color:#0f0;
+    font-size:14px;
+    padding:10px;
+    z-index:10000; /* 黒画面より上 */
+    white-space:pre-wrap;
+    text-align:left;
+  }
 </style>
 </head>
 <body>
@@ -26,6 +42,7 @@
 
 <audio id="remoteAudio" autoplay muted></audio>
 
+<!-- 黒画面 -->
 <div id="blackCover" style="
     position:fixed;
     top:0;
@@ -45,6 +62,7 @@
     <span id="viewerText" style="font-size:18px; opacity:0.7;">0人視聴中</span>
 </div>
 
+<!-- ログ表示領域（黒画面の上に表示される） -->
 <div id="logArea"></div>
 
 <script>
@@ -150,6 +168,8 @@ document.getElementById("startBtn").onclick = async () => {
 };
 
 document.getElementById("stopBtn").onclick = () => {
+    log("配信終了ボタンが押されました");
+
     if (ws) ws.close();
     ws = null;
 
@@ -163,6 +183,8 @@ document.getElementById("stopBtn").onclick = () => {
 
     document.getElementById("startBtn").style.display = "inline-block";
     document.getElementById("stopBtn").style.display = "none";
+
+    log("黒画面解除 → ログ確認可能");
 };
 
 function createPeer(receiverId) {
