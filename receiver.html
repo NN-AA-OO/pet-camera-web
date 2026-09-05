@@ -85,7 +85,6 @@ document.getElementById("connectBtn").onclick = async () => {
 
         if (data.type === "offer") {
 
-            // ★古い peer が残っていたら安全に削除
             if (peer) {
                 try { peer.close(); } catch(e){}
                 peer = null;
@@ -93,7 +92,7 @@ document.getElementById("connectBtn").onclick = async () => {
 
             peer = new RTCPeerConnection();
 
-            // ★Safari完全対応 ontrack（映像が必ず表示される）
+            // ★Safari完全対応 ontrack
             peer.ontrack = (e) => {
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
@@ -150,11 +149,9 @@ document.getElementById("connectBtn").onclick = async () => {
                 receiverId
             }));
 
-            // ★UI 更新
             document.getElementById("disconnectBtn").style.display = "inline-block";
             document.getElementById("connectBtn").style.display = "none";
 
-            // ★音声ボタンを有効化
             document.getElementById("audioToggleIn").disabled = false;
             document.getElementById("audioToggleOut").disabled = false;
         }
@@ -171,33 +168,26 @@ document.getElementById("connectBtn").onclick = async () => {
 // ★接続終了
 document.getElementById("disconnectBtn").onclick = () => {
 
-    // WebSocket を閉じる
     if (ws) ws.close();
     ws = null;
 
-    // PeerConnection を閉じる
     if (peer) {
         try { peer.close(); } catch(e){}
     }
     peer = null;
 
-    // マイク停止
     if (localAudioStream) {
         localAudioStream.getTracks().forEach(t => t.stop());
     }
 
-    // 映像・音声をクリア
     remoteVideo.srcObject = null;
     remoteAudio.srcObject = null;
 
-    // UI を元に戻す
     document.getElementById("connectBtn").style.display = "inline-block";
     document.getElementById("disconnectBtn").style.display = "none";
 
-    // ★視聴者数リセット
     document.getElementById("viewerCount").innerText = "視聴者数：0人";
 
-    // ★音声ボタンを無効化
     document.getElementById("audioToggleIn").disabled = true;
     document.getElementById("audioToggleOut").disabled = true;
 };
