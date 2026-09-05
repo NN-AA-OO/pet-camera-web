@@ -28,7 +28,7 @@
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
 <video id="remoteVideo" autoplay playsinline muted></video>
-<audio id="remoteAudio" autoplay></audio>
+<audio id="remoteAudio" autoplay playsinline></audio>
 
 <script>
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
@@ -41,7 +41,7 @@ let micEnabled = true;
 let remoteAudioEnabled = true;
 let localAudioStream;
 
-// ★自分のマイクON/OFF
+// 自分のマイクON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
     micEnabled = !micEnabled;
     document.getElementById("audioToggleIn").innerText =
@@ -51,7 +51,7 @@ document.getElementById("audioToggleIn").onclick = () => {
     }
 };
 
-// ★相手の音声ON/OFF
+// 相手の音声ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
     document.getElementById("audioToggleOut").innerText =
@@ -59,7 +59,7 @@ document.getElementById("audioToggleOut").onclick = () => {
     document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
-// ★接続
+// 接続
 document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
@@ -85,7 +85,7 @@ document.getElementById("connectBtn").onclick = async () => {
             if (!peer) {
                 peer = new RTCPeerConnection();
 
-                // ★トラックごとに処理（Safari必須）
+                // トラックごとに処理（Safari対応）
                 peer.ontrack = (e) => {
                     if (e.track.kind === "video") {
                         const vs = new MediaStream([e.track]);
@@ -93,7 +93,8 @@ document.getElementById("connectBtn").onclick = async () => {
                     }
                     if (e.track.kind === "audio") {
                         const as = new MediaStream([e.track]);
-                        document.getElementById("remoteAudio").srcObject = as;
+                        const audio = document.getElementById("remoteAudio");
+                        audio.srcObject = as;
                     }
                 };
 
@@ -107,9 +108,13 @@ document.getElementById("connectBtn").onclick = async () => {
                     }
                 };
 
-                // ★自分のマイクを送信
+                // 自分のマイクを送信
                 localAudioStream = await navigator.mediaDevices.getUserMedia({
-                    audio:true,
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    },
                     video:false
                 });
                 localAudioStream.getAudioTracks().forEach(t => {
