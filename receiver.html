@@ -9,7 +9,16 @@
     width:90%; height:auto; max-height:70vh;
     background:#000; margin-top:20px;
   }
-  button { padding:10px 20px; margin:10px; font-size:18px; }
+  button {
+    padding:10px 20px;
+    margin:10px;
+    font-size:18px;
+    border:none;
+    border-radius:6px;
+    color:#fff;
+  }
+  .on  { background:#2ecc71; } /* 緑 */
+  .off { background:#e74c3c; } /* 赤 */
   input { padding:10px; font-size:18px; }
 </style>
 </head>
@@ -27,13 +36,18 @@
 <div id="streamArea" style="display:none;">
   <button id="disconnectBtn">接続終了</button>
 
-  <button id="audioToggleIn" disabled>こちらのマイクOFF</button>
-  <button id="audioToggleOut" disabled>相手の音声OFF</button>
+  <!-- 初期状態：自分のマイク OFF（赤） -->
+  <button id="audioToggleIn" class="off" disabled>マイク OFF</button>
+
+  <!-- 初期状態：相手の音声 OFF（赤） -->
+  <button id="audioToggleOut" class="off" disabled>相手の音声 OFF</button>
 
   <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
   <video id="remoteVideo" autoplay playsinline muted></video>
-  <audio id="remoteAudio" autoplay></audio>
+
+  <!-- 初期状態：相手の音声は muted -->
+  <audio id="remoteAudio" autoplay muted></audio>
 </div>
 
 <script>
@@ -43,15 +57,18 @@ let ws;
 let peer;
 let receiverId;
 
-let micEnabled = true;
-let remoteAudioEnabled = true;
+let micEnabled = false;          // 初期はマイク OFF
+let remoteAudioEnabled = false;  // 初期は相手の音声 OFF
 let localAudioStream;
 
-// ★自分のマイク ON/OFF
+// ★マイク ON/OFF
 document.getElementById("audioToggleIn").onclick = () => {
     micEnabled = !micEnabled;
-    document.getElementById("audioToggleIn").innerText =
-        micEnabled ? "こちらのマイクOFF" : "こちらのマイクON";
+
+    const btn = document.getElementById("audioToggleIn");
+    btn.innerText = micEnabled ? "マイク ON" : "マイク OFF";
+    btn.className = micEnabled ? "on" : "off";
+
     if (localAudioStream) {
         localAudioStream.getAudioTracks().forEach(t => t.enabled = micEnabled);
     }
@@ -60,8 +77,11 @@ document.getElementById("audioToggleIn").onclick = () => {
 // ★相手の音声 ON/OFF
 document.getElementById("audioToggleOut").onclick = () => {
     remoteAudioEnabled = !remoteAudioEnabled;
-    document.getElementById("audioToggleOut").innerText =
-        remoteAudioEnabled ? "相手の音声OFF" : "相手の音声ON";
+
+    const btn = document.getElementById("audioToggleOut");
+    btn.innerText = remoteAudioEnabled ? "相手の音声 ON" : "相手の音声 OFF";
+    btn.className = remoteAudioEnabled ? "on" : "off";
+
     document.getElementById("remoteAudio").muted = !remoteAudioEnabled;
 };
 
@@ -69,7 +89,6 @@ document.getElementById("audioToggleOut").onclick = () => {
 document.getElementById("connectBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // UI 切り替え
     document.getElementById("authArea").style.display = "none";
     document.getElementById("streamArea").style.display = "block";
 
@@ -93,7 +112,6 @@ document.getElementById("connectBtn").onclick = async () => {
 
         if (data.type === "offer") {
 
-            // 古い peer を閉じる
             if (peer) {
                 try { peer.close(); } catch(e){}
                 peer = null;
@@ -101,7 +119,6 @@ document.getElementById("connectBtn").onclick = async () => {
 
             peer = new RTCPeerConnection();
 
-            // ★送信者からの映像・音声を受信
             peer.ontrack = (e) => {
                 if (e.track.kind === "video") {
                     let vs = remoteVideo.srcObject;
@@ -132,7 +149,7 @@ document.getElementById("connectBtn").onclick = async () => {
                 }
             };
 
-            // ★自分のマイクを送信
+            // ★自分のマイク（初期は OFF）
             localAudioStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation:true,
@@ -173,7 +190,7 @@ document.getElementById("connectBtn").onclick = async () => {
     };
 };
 
-// ★接続終了（初期画面に戻す）
+// ★接続終了
 document.getElementById("disconnectBtn").onclick = () => {
 
     if (ws) ws.close();
@@ -191,14 +208,24 @@ document.getElementById("disconnectBtn").onclick = () => {
     remoteVideo.srcObject = null;
     remoteAudio.srcObject = null;
 
-    // UI 初期化
+    // 初期状態に戻す
+    micEnabled = false;
+    remoteAudioEnabled = false;
+
+    document.getElementById("audioToggleIn").innerText = "マイク OFF";
+    document.getElementById("audioToggleIn").className = "off";
+    document.getElementById("audioToggleIn").disabled = true;
+
+    document.getElementById("audioToggleOut").innerText = "相手の音声 OFF";
+    document.getElementById("audioToggleOut").className = "off";
+    document.getElementById("audioToggleOut").disabled = true;
+
+    document.getElementById("remoteAudio").muted = true;
+
     document.getElementById("streamArea").style.display = "none";
     document.getElementById("authArea").style.display = "block";
 
     document.getElementById("viewerCount").innerText = "視聴者数：0人";
-
-    document.getElementById("audioToggleIn").disabled = true;
-    document.getElementById("audioToggleOut").disabled = true;
 };
 
 // ICE 完了待ち
