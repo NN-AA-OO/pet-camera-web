@@ -7,6 +7,7 @@
   body { background:#000; color:#fff; font-family:sans-serif; text-align:center; }
   button { padding:10px 20px; margin:10px; font-size:18px; }
   input { padding:10px; font-size:18px; }
+  #logArea { white-space:pre-wrap; text-align:left; font-size:14px; background:#222; padding:10px; margin-top:20px; }
 </style>
 </head>
 <body>
@@ -44,7 +45,15 @@
     <span id="viewerText" style="font-size:18px; opacity:0.7;">0人視聴中</span>
 </div>
 
+<div id="logArea"></div>
+
 <script>
+function log(msg) {
+    const area = document.getElementById("logArea");
+    area.textContent += msg + "\n";
+    console.log(msg);
+}
+
 const signalingUrl = "wss://pet-camera-server-1.onrender.com";
 
 let localStream;
@@ -75,7 +84,7 @@ document.getElementById("startBtn").onclick = async () => {
         audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
     });
 
-    console.log("sender local audio tracks:", localStream.getAudioTracks());
+    log("sender local audio tracks: " + JSON.stringify(localStream.getAudioTracks()));
 
     document.getElementById("localVideo").srcObject = localStream;
 
@@ -83,6 +92,7 @@ document.getElementById("startBtn").onclick = async () => {
 
     ws.onopen = () => {
         ws.send(JSON.stringify({ type:"auth", password }));
+        log("WebSocket connected");
     };
 
     ws.onmessage = async (msg) => {
@@ -113,18 +123,23 @@ document.getElementById("startBtn").onclick = async () => {
                 offer:peer.localDescription,
                 receiverId
             }));
+
+            log("offer sent to receiver " + receiverId);
         }
 
         if (data.type === "answer") {
             const peer = peers[data.receiverId];
-            if (peer) await peer.setRemoteDescription(data.answer);
+            if (peer) {
+                await peer.setRemoteDescription(data.answer);
+                log("answer received from receiver " + data.receiverId);
+            }
         }
 
         if (data.type === "candidate") {
             const peer = peers[data.receiverId];
             if (peer) {
                 try { await peer.addIceCandidate(data.candidate); }
-                catch(e){ console.error(e); }
+                catch(e){ log("candidate error: " + e); }
             }
         }
     };
@@ -157,10 +172,10 @@ function createPeer(receiverId) {
 
     peer.addTransceiver("audio", { direction:"recvonly" });
 
-    console.log("sender transceivers:", peer.getTransceivers());
+    log("sender transceivers: " + JSON.stringify(peer.getTransceivers()));
 
     peer.ontrack = (e) => {
-        console.log("sender ontrack:", e.track.kind);
+        log("sender ontrack: " + e.track.kind);
 
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
