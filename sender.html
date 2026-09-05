@@ -51,7 +51,6 @@ let localStream;
 let ws;
 let peers = {};
 
-// ★安全な高画質 SDP 書き換え（audio を壊さない）
 function forceHighQuality(sdp) {
     const videoMatch = sdp.match(/m=video \d+ RTP\/SAVPF ([0-9 ]+)/);
     if (!videoMatch) return sdp;
@@ -75,6 +74,8 @@ document.getElementById("startBtn").onclick = async () => {
         video: { facingMode:"environment", width:1280, height:720, frameRate:30 },
         audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
     });
+
+    console.log("sender local audio tracks:", localStream.getAudioTracks());
 
     document.getElementById("localVideo").srcObject = localStream;
 
@@ -154,10 +155,13 @@ function createPeer(receiverId) {
 
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★受信者の音声を受け取るための transceiver（Safari 必須）
     peer.addTransceiver("audio", { direction:"recvonly" });
 
+    console.log("sender transceivers:", peer.getTransceivers());
+
     peer.ontrack = (e) => {
+        console.log("sender ontrack:", e.track.kind);
+
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
             if (!audioStream) {
