@@ -20,14 +20,11 @@
 <button id="startBtn">配信開始</button>
 <button id="stopBtn" style="display:none;">配信終了</button>
 
-<!-- Safari が WebRTC を維持するための最小 video（完全非表示） -->
 <video id="localVideo" autoplay playsinline muted
        style="position:absolute;top:0;left:0;width:1px;height:1px;opacity:0;"></video>
 
-<!-- 受信側からの音声（ハウリング防止のため常に muted） -->
 <audio id="remoteAudio" autoplay muted></audio>
 
-<!-- 配信開始後に画面全体を黒で覆う -->
 <div id="blackCover" style="
     position:fixed;
     top:0;
@@ -54,13 +51,13 @@ let localStream;
 let ws;
 let peers = {};
 
-// ★6Mbps 高画質用 SDP 書き換え（video の payload type を安全に検出）
+// ★安全な高画質 SDP 書き換え（audio を壊さない）
 function forceHighQuality(sdp) {
     const videoMatch = sdp.match(/m=video \d+ RTP\/SAVPF ([0-9 ]+)/);
     if (!videoMatch) return sdp;
 
     const pts = videoMatch[1].trim().split(" ");
-    const pt = pts[0]; // 先頭の payload type を使用
+    const pt = pts[0];
 
     const fmtpRegex = new RegExp(`a=fmtp:${pt} .*\\r\\n`);
     if (!fmtpRegex.test(sdp)) return sdp;
@@ -71,23 +68,12 @@ function forceHighQuality(sdp) {
     );
 }
 
-// ★配信開始
 document.getElementById("startBtn").onclick = async () => {
     const password = document.getElementById("password").value;
 
-    // ★Safari互換のカメラ設定（背面・720p）
     localStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-            facingMode: "environment",
-            width: 1280,
-            height: 720,
-            frameRate: 30
-        },
-        audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true
-        }
+        video: { facingMode:"environment", width:1280, height:720, frameRate:30 },
+        audio: { echoCancellation:true, noiseSuppression:true, autoGainControl:true }
     });
 
     document.getElementById("localVideo").srcObject = localStream;
@@ -101,13 +87,10 @@ document.getElementById("startBtn").onclick = async () => {
     ws.onmessage = async (msg) => {
         const data = JSON.parse(msg.data);
 
-        // ★視聴者数の更新
         if (data.type === "viewer-count") {
-            document.getElementById("viewerText").innerText =
-                `${data.count}人視聴中`;
+            document.getElementById("viewerText").innerText = `${data.count}人視聴中`;
         }
 
-        // ★新しい受信者が来たら PeerConnection を作成
         if (data.type === "receiver-joined") {
             const receiverId = data.receiverId;
 
@@ -131,15 +114,11 @@ document.getElementById("startBtn").onclick = async () => {
             }));
         }
 
-        // ★answer を受信
         if (data.type === "answer") {
             const peer = peers[data.receiverId];
-            if (peer) {
-                await peer.setRemoteDescription(data.answer);
-            }
+            if (peer) await peer.setRemoteDescription(data.answer);
         }
 
-        // ★candidate を受信
         if (data.type === "candidate") {
             const peer = peers[data.receiverId];
             if (peer) {
@@ -149,28 +128,19 @@ document.getElementById("startBtn").onclick = async () => {
         }
     };
 
-    // ★配信開始後に黒画面を表示（省エネ）
     document.getElementById("blackCover").style.display = "block";
-
-    // ★配信終了ボタンを表示
     document.getElementById("stopBtn").style.display = "inline-block";
     document.getElementById("startBtn").style.display = "none";
 };
 
-// ★配信終了
 document.getElementById("stopBtn").onclick = () => {
-
     if (ws) ws.close();
     ws = null;
 
-    Object.values(peers).forEach(peer => {
-        try { peer.close(); } catch(e){}
-    });
+    Object.values(peers).forEach(peer => { try { peer.close(); } catch(e){} });
     peers = {};
 
-    if (localStream) {
-        localStream.getTracks().forEach(t => t.stop());
-    }
+    if (localStream) localStream.getTracks().forEach(t => t.stop());
 
     document.getElementById("blackCover").style.display = "none";
     document.getElementById("viewerText").innerText = "0人視聴中";
@@ -179,17 +149,14 @@ document.getElementById("stopBtn").onclick = () => {
     document.getElementById("stopBtn").style.display = "none";
 };
 
-// ★PeerConnection 作成
 function createPeer(receiverId) {
     const peer = new RTCPeerConnection();
 
-    // 映像＋音声を送信
     localStream.getTracks().forEach(t => peer.addTrack(t, localStream));
 
-    // ★受信者の音声を受け取るための transceiver
-    peer.addTransceiver("audio", { direction: "recvonly" });
+    // ★受信者の音声を受け取るための transceiver（Safari 必須）
+    peer.addTransceiver("audio", { direction:"recvonly" });
 
-    // ★受信者からの音声を受信
     peer.ontrack = (e) => {
         if (e.track.kind === "audio") {
             let audioStream = document.getElementById("remoteAudio").srcObject;
@@ -214,7 +181,6 @@ function createPeer(receiverId) {
     return peer;
 }
 
-// ICE 完了待ち
 function waitIce(peer) {
     return new Promise(resolve => {
         if (peer.iceGatheringState === "complete") resolve();
