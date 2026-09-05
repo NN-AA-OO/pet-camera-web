@@ -10,7 +10,7 @@
     width: 90%;
     height: auto;
     max-height: 70vh;
-    background: transparent;
+    background: #000; /* 黒背景にして映像が見やすい */
     margin-top: 20px;
     position: relative;
     z-index: 10;
@@ -34,6 +34,7 @@
 
 <p id="viewerCount" style="font-size:20px; margin-top:10px;">視聴者数：0人</p>
 
+<!-- ★受信側の映像を表示 -->
 <video id="remoteVideo" autoplay playsinline></video>
 
 <script>
@@ -104,9 +105,9 @@ document.getElementById("connectBtn").onclick = async () => {
                 // ★映像＋音声を受信
                 peer.ontrack = (e) => {
                     const stream = e.streams[0];
-                    document.getElementById("remoteVideo").srcObject = stream;
-                    // 相手の音声ON/OFFは video.muted で制御
-                    document.getElementById("remoteVideo").muted = !remoteAudioEnabled;
+                    const remoteVideo = document.getElementById("remoteVideo");
+                    remoteVideo.srcObject = stream;
+                    remoteVideo.muted = !remoteAudioEnabled;
                 };
 
                 // ★ICE candidate を送信
